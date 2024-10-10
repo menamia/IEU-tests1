@@ -1,0 +1,13 @@
+Sub WriteNumberToCells()
+    Dim ws As Worksheet
+    
+    ' Loop through all worksheets in the active workbook
+    For Each ws In ThisWorkbook.Worksheets
+        ' Write the number 1000 in cells A3 and C3
+        ws.Range("B20").Value = 1000
+        ws.Range("D20").Value = 1000
+	ws.Range("A20").Value = 2000
+        ws.Range("C20").Value = 2000
+
+    Next ws
+End Sub
