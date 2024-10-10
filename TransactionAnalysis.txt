@@ -18,25 +18,27 @@ Sub CalculateTotal()
     Next i
 End Sub
 
-Function CountEnergyTransactions() As Long
+Sub HighlightEnergyCells()
     Dim ws As Worksheet
     Dim lastRow As Long
     Dim i As Long
-    Dim count As Long
 
     ' Set the worksheet you want to work with
     Set ws = ThisWorkbook.Sheets("Sheet1") ' Change to your sheet name
 
     ' Find the last row with data in column A (Number_ID)
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-    count = 0
 
-    ' Loop through each row to count "Energy"
+    ' Loop through each row to highlight "Energy"
     For i = 2 To lastRow ' Assuming data starts from row 2
         If ws.Cells(i, 2).Value = "Energy" Then ' Area is in column B
-            count = count + 1
+            ws.Cells(i, 2).Interior.Color = RGB(0, 255, 0) ' Highlight in green
         End If
     Next i
+End Sub
 
-    CountEnergyTransactions = count
-End Function
+Sub RunAllTransactions()
+    CalculateTotal
+    HighlightEnergyCells
+End Sub
+
