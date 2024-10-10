@@ -1,0 +1,42 @@
+Sub CalculateTotal()
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim i As Long
+
+    ' Set the worksheet you want to work with
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change to your sheet name
+
+    ' Find the last row with data in column A (Number_ID)
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    ' Add header for the Total column
+    ws.Cells(1, 5).Value = "Total" ' Assuming Total goes in column E
+
+    ' Loop through each row to sum Value 1 and Value 2
+    For i = 2 To lastRow ' Assuming data starts from row 2
+        ws.Cells(i, 5).Value = ws.Cells(i, 3).Value + ws.Cells(i, 4).Value ' Value 1 is in column C, Value 2 is in column D
+    Next i
+End Sub
+
+Function CountEnergyTransactions() As Long
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim i As Long
+    Dim count As Long
+
+    ' Set the worksheet you want to work with
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change to your sheet name
+
+    ' Find the last row with data in column A (Number_ID)
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    count = 0
+
+    ' Loop through each row to count "Energy"
+    For i = 2 To lastRow ' Assuming data starts from row 2
+        If ws.Cells(i, 2).Value = "Energy" Then ' Area is in column B
+            count = count + 1
+        End If
+    Next i
+
+    CountEnergyTransactions = count
+End Function
