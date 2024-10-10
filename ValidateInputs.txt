@@ -2,44 +2,38 @@ Sub ValidateInputs()
     Dim ws As Worksheet
     Dim lastRow As Long
     Dim i As Long
-    Dim areaValid As Boolean
-    
-    ' Set the worksheet you want to work with
+    Dim valid As Boolean
+
     Set ws = ThisWorkbook.Sheets("Sheet1") ' Change to your sheet name
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row ' Find the last row with data
 
-    ' Find the last row with data in column A (Number_ID)
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    ' Clear previous validation results
+    ws.Range("E2:E" & lastRow).ClearContents ' Clear previous validation results
 
-    ' Loop through each row to validate inputs
+    ' Validate inputs
+    valid = True
     For i = 2 To lastRow ' Assuming data starts from row 2
-        ' Check Number_ID
-        If ws.Cells(i, 1).Value < 0 Or ws.Cells(i, 1).Value > 1000 Then
-            ws.Cells(i, 1).Interior.Color = RGB(255, 0, 0) ' Highlight in red
-        Else
-            ws.Cells(i, 1).Interior.ColorIndex = xlNone ' Clear any previous highlight
+        If ws.Cells(i, 1).Value < 0 Or ws.Cells(i, 1).Value > 1000 Then ' Number_ID in column A
+            ws.Cells(i, 5).Value = "Error" ' Mark error in column E
+            valid = False
         End If
-        
-        ' Check Area
-        areaValid = (ws.Cells(i, 2).Value = "Energy" Or ws.Cells(i, 2).Value = "Education" Or ws.Cells(i, 2).Value = "Water")
-        If Not areaValid Then
-            ws.Cells(i, 2).Interior.Color = RGB(255, 0, 0) ' Highlight in red
-        Else
-            ws.Cells(i, 2).Interior.ColorIndex = xlNone ' Clear any previous highlight
+        If Not (ws.Cells(i, 2).Value = "Energy" Or ws.Cells(i, 2).Value = "Education" Or ws.Cells(i, 2).Value = "Water") Then ' Area in column B
+            ws.Cells(i, 5).Value = "Error"
+            valid = False
         End If
-        
-        ' Check Values 1 and 2
-        If ws.Cells(i, 3).Value <= 0 Then
-            ws.Cells(i, 3).Interior.Color = RGB(255, 0, 0) ' Highlight in red
-        Else
-            ws.Cells(i, 3).Interior.ColorIndex = xlNone ' Clear any previous highlight
+        If ws.Cells(i, 3).Value <= 0 Then ' Value 1 in column C
+            ws.Cells(i, 5).Value = "Error"
+            valid = False
         End If
-        
-        If ws.Cells(i, 4).Value <= 0 Then
-            ws.Cells(i, 4).Interior.Color = RGB(255, 0, 0) ' Highlight in red
-        Else
-            ws.Cells(i, 4).Interior.ColorIndex = xlNone ' Clear any previous highlight
+        If ws.Cells(i, 4).Value <= 0 Then ' Value 2 in column D
+            ws.Cells(i, 5).Value = "Error"
+            valid = False
         End If
     Next i
 
-    MsgBox "Input validation completed."
+    If valid Then
+        MsgBox "Input validation completed successfully."
+    Else
+        MsgBox "Some inputs are invalid. Please check column E for details."
+    End If
 End Sub
