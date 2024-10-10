@@ -1,0 +1,1044 @@
+Function getUniqueID(Target As Variant) As String
+
+'Returns values until the last number value is found from a text
+'____________________________________________________________________________________________
+
+Dim i As Integer
+Dim strResult As String
+    
+    strResult = ""
+    
+    For i = 1 To Len(Target)
+        If IsNumeric(Mid(Target, i, 1)) Then strResult = Left(Target, i)
+    Next i
+    
+    getUniqueID = strResult
+
+End Function
+
+Function getSheetID(srcValue As String) As Integer
+
+'Returns the sheet array ID based on the entity/name - hardcoded values to avoid extra mapping sheets
+'____________________________________________________________________________________________
+
+    Select Case srcValue
+        Case "A1", "sme"
+            getSheetID = 1
+        Case "A2", "transactions"
+            getSheetID = 2
+        Case "A3", "guarantees"
+            getSheetID = 3
+        Case "B", "included_transactions"
+            getSheetID = 4
+        Case "D", "expired_transactions"
+            getSheetID = 5
+        Case "E", "excluded_transactions"
+            getSheetID = 6
+        Case "S11"
+            getSheetID = 7
+        Case "S12"
+            getSheetID = 8
+        Case "S3", "sustainability"
+            getSheetID = 9
+        Case Else
+            getSheetID = 0
+    End Select
+
+End Function
+
+Function getSheetName(srcValue As Long) As String
+
+'Returns the sheet name based on sheet array ID
+'Not implemented in the other function as that has to return integer dtype
+'____________________________________________________________________________________________
+
+    Select Case srcValue
+        Case 1
+            getSheetName = "A1"
+        Case 2
+            getSheetName = "A2"
+        Case 3
+            getSheetName = "A3"
+        Case 4
+            getSheetName = "B"
+        Case 5
+            getSheetName = "D"
+        Case 6
+            getSheetName = "E"
+        Case 7
+            getSheetName = "S11"
+        Case 8
+            getSheetName = "S12"
+        Case 9
+            getSheetName = "S3"
+        Case Else
+            getSheetName = ""
+    End Select
+
+End Function
+
+Function readSheet(sheetName As String, Optional addedCols As Long = 0) As Variant
+
+'Reads sheet into an array:
+'mainArray is the array containing the sheet arrays, while sheetID is will be the sheet location in this mainarray
+'____________________________________________________________________________________________
+
+Dim ws As Worksheet
+Dim lr As Long, lc As Long
+Dim i As Long, j As Long
+Dim wsArr As Variant
+
+    'Check existence
+        On Error Resume Next
+        Set ws = ThisWorkbook.Worksheets(sheetName)
+        On Error GoTo 0
+    
+    'Read worksheet
+        If Not ws Is Nothing Then
+            lr = ws.Range("A1").End(xlDown).Row
+            lc = ws.Range("A1").End(xlToRight).Column
+            ReDim wsArr(1 To lr, 1 To lc + 1 + addedCols) '1 col for error output + added cols
+            For i = 1 To lr
+                For j = 1 To lc 'leave error col empty
+                    wsArr(i, j) = ws.Cells(i, j)
+                Next j
+            Next i
+            readSheet = wsArr
+        End If
+
+End Function
+
+Function readMAP(sheet As Worksheet) As Variant
+
+Dim outputArr As Variant
+Dim requiredFields As Long
+Dim templLR As Long
+Dim i As Long, j As Long
+
+'Reads MAP sheet incl. lists
+'____________________________________________________________________________________________
+
+With sheet
+    
+    'Check required fields & declare array
+        requiredFields = .Range("A1").End(xlToRight).Column - 1
+        ReDim outputArr(1 To requiredFields, 1 To 5) '5 columns: code, field_name, mandatory, dtype, list if applicable
+    
+    'Read main datapoints
+        For i = 1 To requiredFields
+            For j = 1 To 4
+                outputArr(i, j) = .Cells(j, i + 1)
+            Next j
+        Next i
+        
+    'Read list items
+        For i = 1 To requiredFields
+            If outputArr(i, 4) = "List" Then
+                tempLR = .Range(.Cells(1, i + 1).Address).End(xlDown).Row
+                outputArr(i, 5) = WorksheetFunction.Transpose(.Range(.Cells(5, i + 1).Address, .Cells(tempLR, i + 1).Address))
+            End If
+        Next i
+    
+End With
+
+readMAP = outputArr
+
+End Function
+
+Function getArrCol(arr As Variant, colName As String, Optional rowID As Long = 1) As Integer
+
+'returns the column number of a specific field in an array (by default searching header row 1)
+'____________________________________________________________________________________________
+
+Dim i As Long
+Dim colID As Long
+
+colID = 0
+
+    'Loop and get data
+        For i = 1 To UBound(arr, 2)
+            If arr(rowID, i) = colName Then
+                colID = i
+                Exit For
+            End If
+        Next i
+
+getArrCol = colID
+
+End Function
+
+Function readBR(sheet As Worksheet, Optional ruleNumCol As Integer = 1) As Variant
+
+'Reads BR sheet, calculates ID's
+'____________________________________________________________________________________________
+
+Dim outputArr As Variant
+Dim lr As Long, lc As Long
+Dim i As Long, j As Long
+Dim temp As String
+Dim colP1 As Integer, colP2 As Integer
+
+colP1 = 0
+colP2 = 0
+
+    'Read BR Sheet
+        With sheet
+            
+            'Check required rows & columns, declare array
+                lr = .Range("A1").End(xlDown).Row
+                lc = .Range("A1").End(xlToRight).Column + 1 'additional column for unique ID
+                ruleNumCol = ruleNumCol + 1 'we move it to the right in the array, so first col will be uqid
+                ReDim outputArr(1 To lr, 1 To lc)
+                
+            'Read worksheet
+                For i = 1 To lr
+                    For j = lc To 1 Step -1 'reverse columns, as in 1 we need filled data in output(i, 2) (rule_num) to calc. uq id
+                        If j <> 1 Then
+                            outputArr(i, j) = .Cells(i, j - 1)
+                        Else
+                        'unique ID calculation & row header
+                            If i = 1 Then
+                                outputArr(i, j) = "unique_id"
+                            Else
+                                outputArr(i, j) = getUniqueID(outputArr(i, ruleNumCol))
+                            End If
+                        End If
+                    Next j
+                Next i
+                
+            'Sort BR
+                For i = 2 To lr - 1
+                    For j = i + 1 To lr
+                        If outputArr(i, ruleNumCol) > outputArr(j, ruleNumCol) Then
+                            For k = 1 To lc
+                                temp = outputArr(i, k)
+                                outputArr(i, k) = outputArr(j, k)
+                                outputArr(j, k) = temp
+                            Next k
+                        End If
+                    Next j
+                Next i
+                
+            'Clean quote marks
+                'Find Param columns
+                    colP1 = getArrCol(outputArr, "param_1_value")
+                    colP2 = getArrCol(outputArr, "param_2_value")
+                'Remove quotes
+                    For i = 2 To lr
+                        If InStr(outputArr(i, colP1), Chr(34)) > 0 Then outputArr(i, colP1) = Replace(outputArr(i, colP1), Chr(34), "")
+                        If InStr(outputArr(i, colP2), Chr(34)) > 0 Then outputArr(i, colP2) = Replace(outputArr(i, colP2), Chr(34), "")
+                    Next i
+            
+        End With
+
+readBR = outputArr
+
+End Function
+
+Function getFieldProperties(mapArray As Variant, srcValue As Variant, Optional srcType As Boolean = False) As Variant
+
+'Returns the mapped datatype of the field, including mandatory field requirement & list if applicable
+'srcType False by defauls searches field name (fiscal_number) while True searches by code (A.1.1.)
+'____________________________________________________________________________________________
+
+Dim colIndex As Integer
+Dim foundCol As Integer
+Dim idRow As Integer
+Dim dtypeRow As Integer
+Dim mandRow As Integer
+Dim listArrLoc As Integer
+Dim propertiesArr As Variant
+
+    'Initialize values:
+        foundCol = 0
+        dtypeRow = 4 'hard-coded, always row 4 in mapping
+        mandRow = 3
+        listArrLoc = 5
+    
+    'Row to search on:
+        If srcType = False Then idRow = 2 Else idRow = 1
+        
+    'Find dtype location:
+        For colIndex = LBound(mapArray, 1) To UBound(mapArray, 1)
+            If mapArray(colIndex, idRow) = srcValue Then
+                foundCol = colIndex
+                Exit For
+            End If
+        Next colIndex
+        
+    'Get dtype:
+        If foundCol <> 0 Then
+            ReDim propertiesArr(1 To 4)
+            propertiesArr(1) = mapArray(colIndex, mandRow)
+            propertiesArr(2) = mapArray(colIndex, dtypeRow)
+            If propertiesArr(2) = "List" Then propertiesArr(3) = mapArray(colIndex, listArrLoc) Else propertiesArr(3) = ""
+            propertiesArr(4) = foundCol
+        Else
+            propertiesArr = "N/A"
+        End If
+        
+getFieldProperties = propertiesArr
+
+End Function
+
+Function evaluateDataType(Target As Variant, dType As Variant, Optional listArray As Variant) As Variant
+
+'Evaluates value based on the mapped datatype of the field, generates error message (w/o field name) -> 2 outputs
+'____________________________________________________________________________________________
+
+Dim i As Long
+Dim listCntr As Integer
+Dim resultArr As Variant
+
+ReDim resultArr(1 To 3)
+
+If Target <> "" Then
+    Select Case dType
+        Case "Number"
+            If IsNumeric(Target) Then
+                resultArr(1) = True
+            Else
+                resultArr(1) = False
+                resultArr(2) = "] field should be a numeric value."
+            End If
+        Case "Date"
+            If IsDate(Target) Then
+                resultArr(1) = True
+            Else
+                resultArr(1) = False
+                resultArr(2) = "] field should be a recognized date value."
+            End If
+        Case "Boolean"
+            Target = UCase(CStr(Target))
+            If Target = "Y" Or Target = "N" Then
+                resultArr(1) = True
+            ElseIf UCase(Trim(Target)) = "Y" Or UCase(Trim(Target)) = "N" Then
+                resultArr(1) = True
+                resultArr(3) = UCase(Trim(Target))
+            Else
+                resultArr(1) = False
+                resultArr(2) = "] field should be either 'Y' or 'N'."
+            End If
+        Case "Text"
+            resultArr(1) = True
+        Case "List"
+            listCntr = 0
+            For i = LBound(listArray) To UBound(listArray)
+                If LCase(CStr(listArray(i))) = LCase(CStr(Target)) Then
+                    listCntr = listCntr + 1
+                    Exit For
+                Else 'incl check to trimmed value -> output and transform data if necessary!
+                    If LCase(CStr(listArray(i))) = Trim(LCase(CStr(Target))) Then
+                        listCntr = listCntr + 1
+                        resultArr(3) = Trim(CStr(Target))
+                        Exit For
+                    End If
+                End If
+            Next i
+            If listCntr > 0 Then
+                resultArr(1) = True
+            Else
+                resultArr(1) = False
+                resultArr(2) = "] field should be one of the predefined dictionary values."
+            End If
+    End Select
+End If
+
+evaluateDataType = resultArr
+
+End Function
+
+Function getFieldValue(arrData As Variant, rowSrc As Variant, colSrc As Variant, _
+                        Optional concSrc As Boolean = False, _
+                        Optional rowSrcIn As Boolean = False, _
+                        Optional colSrcIn As Boolean = False) As Variant
+
+'Returns the value based on the ID (i.e. Trn_Ref/FR ID), the header code from the input array
+'rowSrcIn is by default FALSE (searches by FRT REF), but can be put to TRUE (searches by FR ID)
+'concSrc = FALSE means we can search by FR or FRT, as true means we search for both values (colSrcIn ignored)
+'____________________________________________________________________________________________
+
+Dim rowIndex As Integer
+Dim colIndex As Integer
+Dim foundRow As Integer
+Dim foundCol As Integer
+Dim idCol As Integer
+Dim idRow As Integer
+Dim tgtAndTgtRow As Variant
+
+    'Initialize finder values:
+        foundRow = 0
+        foundCol = 0
+    
+    'Initial columns & rows to search on:
+        If colSrcIn = False Then idCol = 2 Else idCol = 1 'FRT or FR
+        If rowSrcIn = False Then idRow = 3 Else idRow = 1 'field_name or sheet code
+        
+    'Find location:
+        'Row location
+            If concSrc = False Then
+                'If searched on one value (FR/FRT):
+                    For rowIndex = LBound(arrData, 1) To UBound(arrData, 1)
+                        If CStr(arrData(rowIndex, idCol)) = rowSrc Then
+                            foundRow = rowIndex
+                            Exit For
+                        End If
+                    Next rowIndex
+            Else
+                'If searched on concatenated FR&FRT id:
+                    For rowIndex = LBound(arrData, 1) To UBound(arrData, 1)
+                        If CStr(arrData(rowIndex, 1) & arrData(rowIndex, 2)) = rowSrc Then
+                            foundRow = rowIndex
+                            Exit For
+                        End If
+                    Next rowIndex
+            End If
+        'Col location (same for both search cases)
+            For colIndex = LBound(arrData, 2) To UBound(arrData, 2)
+                If CStr(arrData(idRow, colIndex)) = colSrc Then
+                    foundCol = colIndex
+                    Exit For
+                End If
+            Next colIndex
+    
+    'Return value:
+        ReDim tgtAndTgtRow(1 To 2)
+        If foundRow <> 0 And foundCol <> 0 Then
+            'Handle empty fields -> convert to empty strings
+                If IsEmpty(arrData(foundRow, foundCol)) Then
+                    tgtAndTgtRow(1) = ""
+                Else
+                    tgtAndTgtRow(1) = arrData(foundRow, foundCol)
+                End If
+            'log row to output error to
+            tgtAndTgtRow(2) = foundRow
+        Else
+            tgtAndTgtRow(1) = "N/A"
+        End If
+        
+getFieldValue = tgtAndTgtRow
+
+End Function
+
+Function reqNewEntity(arrBR As Variant, rowBR As Long) As Variant
+
+'Returns 2 boolean values -> 1 is if BR will need a new TRN, 2 is if BR will require A3 sheet (CG)
+'____________________________________________________________________________________________
+
+Dim i As Long, j As Long
+Dim strEntity As String
+Dim arrEntity As Variant
+Dim BR_UID As String
+Dim BR_P1 As String
+Dim BR_P2 As String
+Dim complexValues As Variant
+Dim complexEntity As Variant
+Dim result As Variant
+
+BR_UID = arrBR(rowBR, colBR_UID)
+strEntity = ""
+
+'Collect entities of this BR, checked_enitity field
+    For i = 2 To UBound(arrBR, 1)
+        If arrBR(i, colBR_UID) = BR_UID Then
+            'Add base entity
+                If strEntity = "" Then strEntity = arrBR(i, colBR_Entity) Else strEntity = strEntity & ";" & arrBR(i, colBR_Entity)
+                'P1 evaluation (if complex)
+                    BR_P1 = CStr(arrBR(i, colBR_P1))
+                    If InStr(BR_P1, "//") Then
+                        complexValues = getComplexValues(BR_P1)
+                        For j = LBound(complexValues) To UBound(complexValues)
+                            complexEntity = splitComplexValues(complexValues(j))(1)
+                            If strEntity = "" Then strEntity = CStr(complexEntity) Else strEntity = strEntity & ";" & CStr(complexEntity)
+                        Next j
+                    End If
+                'P2 evaluation (if not empty) (if complex)
+                    If Not IsEmpty(arrBR(i, colBR_P2)) Then
+                        BR_P2 = CStr(arrBR(i, colBR_P2))
+                        If InStr(BR_P2, "//") Then
+                            complexValues = getComplexValues(BR_P2)
+                            For j = LBound(complexValues) To UBound(complexValues)
+                                complexEntity = splitComplexValues(complexValues(j))(1)
+                                If strEntity = "" Then strEntity = CStr(complexEntity) Else strEntity = strEntity & ";" & CStr(complexEntity)
+                            Next j
+                        End If
+                    End If
+        Else
+            'skip loop if values collected (as BR array is sorted, after finding values, everything after first non-match is irrelevant
+            If strEntity <> "" Then Exit For
+        End If
+    Next i
+
+'Get array of entities
+    If InStr(strEntity, ";") Then
+        arrEntity = Split(strEntity, ";")
+    Else
+        ReDim arrEntity(1 To 1)
+        arrEntity(1) = strEntity
+    End If
+
+
+    'Evaluate if any of them is A1-A3 (new TRN check)
+        'sme, transactions, guarantees
+        'as well as temporary_transactions -> as in these instances we have datapoints in A2 (for old TRN we can't check such rules)
+        ReDim result(1 To 2)
+        result(1) = False
+        result(2) = False
+        For i = LBound(arrEntity) To UBound(arrEntity)
+            'OVERALL NEW TRN
+            If arrEntity(i) = "sme" Or arrEntity(i) = "transactions" _
+               Or arrEntity(i) = "guarantees" Or arrEntity(i) = "temporary_transactions" Then result(1) = True
+            'A3 req
+            If arrEntity(i) = "guarantees" Then result(2) = True
+        Next i
+
+reqNewEntity = result
+
+End Function
+
+Function convertType(originalValue As Variant, Optional dType As Variant) As Variant
+
+'Converts given values to doubles -> used in evaluation for dates & numbers
+'____________________________________________________________________________________________
+
+If IsMissing(dType) Then dType = ""
+
+If dType = "" Then
+    If IsDate(originalValue) Then
+        convertType = CDbl(CDate(originalValue))
+    ElseIf IsNumeric(originalValue) Then
+        convertType = CDbl(originalValue)
+    Else
+        convertType = originalValue
+    End If
+Else
+    If dType = "Date" Then
+        convertType = CDbl(CDate(originalValue))
+    ElseIf dType = "Number" Then
+        convertType = CDbl(originalValue)
+    Else
+        convertType = CStr(originalValue)
+    End If
+End If
+
+End Function
+
+Function evaluateBR(Target As Variant, param As Variant, operator As Variant, Optional Param2 As Variant, Optional dType As Variant) As Variant
+
+'Evaluates input value to true or false based on the given parameter(s) & operator
+'____________________________________________________________________________________________
+
+Dim arrParam() As String
+Dim strParam As Variant
+Dim cntrErrList As Integer
+
+If IsMissing(dType) Then dType = ""
+
+'first distinction between missing/not missing checks AND other checks, as for others if target = "" we skip BR
+Select Case operator
+    
+    Case "missing", "not_missing"
+        'Missing and non-missing checks, we allow empty target values
+        Select Case operator
+            Case "missing"
+                If Target = "" Then evaluateBR = True Else evaluateBR = False
+            Case "not_missing"
+                If Target <> "" Then evaluateBR = True Else evaluateBR = False
+        End Select
+    Case Else
+        'In case of other operators, if we have empty target we get empty function value
+        If Target = "" Then
+            evaluateBR = Empty
+            Exit Function
+        End If
+        
+        'Otherwise we run the rest of the operator evaluations
+                    'convert data types to doubles if required
+                        Target = convertType(Target, dType)
+                        param = convertType(param, dType)
+                        If Not IsMissing(Param2) Then
+                            If Param2 <> "" Then Param2 = convertType(Param2, dType)
+                        End If
+                        
+        Select Case operator
+            
+            'Simple operators
+            Case ">", "<", ">=", "<=", "=", "<>"
+                If operator = "=" Then 'if it's equal, we can just compare same datatype
+                    If LCase(CStr(Target)) = LCase(CStr(param)) Then evaluateBR = True Else evaluateBR = False
+                ElseIf operator = "<>" Then
+                    If LCase(CStr(Target)) <> LCase(CStr(param)) Then evaluateBR = True Else evaluateBR = False
+                Else
+                    evaluateBR = Application.Evaluate(Target & operator & param)
+                End If
+            
+            'List operators
+            Case "in", "ex"
+                If InStr(param, ",") > 0 Then
+                    arrParam = Split(param, ",")
+                    cntrErrList = 0
+                    If operator = "in" Then
+                        For Each strParam In arrParam
+                            If LCase(CStr(Target)) = LCase(CStr(strParam)) Then
+                                evaluateBR = True
+                                Exit Function
+                            End If
+                        Next strParam
+                    Else
+                        For Each strParam In arrParam
+                            If LCase(CStr(Target)) = LCase(CStr(strParam)) Then cntrErrList = cntrErrList + 1
+                        Next strParam
+                        If cntrErrList = 0 Then evaluateBR = True Else evaluateBR = False
+                    End If
+                Else
+                    If operator = "in" And CStr(Target) = param Then
+                        evaluateBR = True
+                    ElseIf operator = "in" And CStr(Target) <> param Then
+                        evaluateBR = False
+                    ElseIf operator = "ex" And CStr(Target) <> param Then
+                        evaluateBR = True
+                    ElseIf operator = "ex" And CStr(Target) = param Then
+                        evaluateBR = False
+                    End If
+                End If
+                
+            'Range "[]" -> date or number interval, inclusive (needs 2 params!)
+            Case "[]"
+                If Target >= param And Target <= Param2 Then
+                    evaluateBR = True
+                Else
+                    evaluateBR = False
+                End If
+                
+            'Starts with, like and not like
+            '! each current "like" case has VAL%, where % is the unknown, and VAL is the given value. It acts just like startswith.
+            Case "startswith"
+                If Left(Target, Len(param)) = param Then evaluateBR = True Else evaluateBR = False
+            Case "like", "not_like"
+                'same as above, just replace % -> for numeric values excel converts to pct values automatically, so we need to conv. back!
+                If IsNumeric(param) Then param = param * 100 Else param = Replace(param, "%", "")
+                If operator = "like" Then
+                    If Left(CStr(Target), Len(param)) = CStr(param) Then evaluateBR = True Else evaluateBR = False
+                Else
+                    If Left(CStr(Target), Len(param)) <> CStr(param) Then evaluateBR = True Else evaluateBR = False
+                End If
+    
+        End Select
+    End Select
+
+End Function
+
+Function findNextBrRow(arrBR As Variant, nextRuleNum As String, Optional ruleNumCol As Integer = 2) As Long
+
+'When evaluating BR's, this returns the row of the follow-up BR rule
+'____________________________________________________________________________________________
+
+Dim i As Long
+
+    'loop through array and find value
+    'rule num col should be always 2 in array (col. 1 in original file, then unique ID inserted beforehand)
+        For i = 2 To UBound(arrBR, 1)
+            If arrBR(i, ruleNumCol) = nextRuleNum Then
+                findNextBrRow = i
+                Exit For
+            End If
+        Next i
+    
+End Function
+
+Function isSpecField(field As Variant) As Boolean
+
+'Contains the list of special fields to be calculated
+'____________________________________________________________________________________________
+
+Dim i As Long, cntr As Long
+Dim specFields As Variant
+
+specFields = Array("cumulative_repaid", _
+                   "maturity_date")
+
+cntr = 0
+
+    For i = LBound(specFields) To UBound(specFields)
+        If field = specFields(i) Then
+            cntr = cntr + 1
+            Exit For
+        End If
+    Next i
+
+If cntr = 0 Then isSpecField = False Else isSpecField = True
+
+End Function
+
+Function getSpecField(field As Variant) As Variant
+
+'Returns calculated special fields (hard-coded calculations for non-template fields)
+'____________________________________________________________________________________________
+
+Select Case field
+    Case "maturity_date"
+        getSpecField = solveComplexParam("//transactions.signature_date+//transactions.maturity-1", currFR, currFRT)
+    Case "cumulative_repaid"
+        getSpecField = solveComplexParam _
+                       ("//included_transactions.cumulative_disbursed-//included_transactions.outstanding_principal", _
+                       currFR, currFRT)
+    Case Else
+        getSpecField = "N/A"
+End Select
+
+End Function
+
+Function runBrRow(arrBR As Variant, rowBR As Variant) As Variant()
+
+'This is the main BR evaluation, that contains the whole process to be done for one line of rule
+'Returns the next row of the actual BR based on the evaluation, or 0 (= no next true/false rule), as well as the result (T/F)
+'____________________________________________________________________________________________
+
+'BR Datapoints
+    Dim BR_UID As String
+    Dim BR_RNum As String
+    Dim BR_Entity As String
+    Dim BR_Field As String
+    Dim BR_Op As String
+    Dim BR_P1 As Variant
+    Dim BR_P2 As Variant
+    Dim BR_T As String
+    Dim BR_F As String
+    Dim BR_Desc As String
+
+'Function Vars
+    Dim sheetID As Integer
+    Dim srcID As String
+    Dim srcType As Boolean
+    Dim colSrcType As Boolean
+    Dim tgtValues As Variant
+    Dim tgtVal As Variant
+    Dim dType As String
+    Dim result As Variant
+    Dim strFollowUpRule As String
+    Dim lngFollowUpRule As Long
+    Dim strErrMsg As Long
+    Dim output As Variant
+    Dim fieldDataType As Variant
+
+'Relevant datapoints
+    BR_UID = arrBR(rowBR, colBR_UID)
+    BR_RNum = arrBR(rowBR, colBR_RNum)
+    BR_Entity = arrBR(rowBR, colBR_Entity)
+    BR_Field = arrBR(rowBR, colBR_Field)
+    BR_Op = arrBR(rowBR, colBR_Op)
+    BR_P1 = arrBR(rowBR, colBR_P1)
+    BR_P2 = arrBR(rowBR, colBR_P2)
+    BR_T = arrBR(rowBR, colBR_T)
+    BR_F = arrBR(rowBR, colBR_F)
+    BR_Desc = arrBR(rowBR, colBR_Desc)
+    
+    '--- TESTING ---
+    'If BR_RNum = "DQ_C_21" Then
+    'MsgBox "now"
+    'End If
+    
+                    'SPECIAL CASES
+                        'RULE SPECIFIC CHANGES
+                            If arrBR(rowBR, colBR_RNum) = "MD_E_9F" Then BR_Field = "collateral_amount"
+                        'ENTITY REPLACEMENT: temporary_transactions
+                            'ORIGINAL ENTITY
+                                If BR_Entity = "temporary_transactions" Then BR_Entity = "transactions"
+                            'P1 & P2
+                                If InStr(CStr(BR_P1), "temporary_transactions") Then
+                                    BR_P1 = Replace(CStr(BR_P1), "temporary_transactions", "transactions")
+                                End If
+                                If InStr(CStr(BR_P2), "temporary_transactions") Then
+                                    BR_P2 = Replace(CStr(BR_P2), "temporary_transactions", "transactions")
+                                End If
+
+'Target value (separated flow for special fields as per documentation)
+    If isSpecField(BR_Field) Then
+        tgtVal = getSpecField(BR_Field)
+    Else
+        'Identify relevant sheet
+            sheetID = getSheetID(BR_Entity)
+        'Set FR ID/FR ID & FRT ID to search on
+            If sheetID = 1 Then
+                srcID = currFR
+                srcType = False
+                colSrcType = True 'searches in col 1 (FR ID)
+            Else
+                srcID = currFR & currFRT
+                srcType = True
+                colSrcType = False 'not relevant as searches both fr & frt id
+            End If
+        'Get relevant value to be checked
+            tgtValues = getFieldValue(arrSheets(sheetID), srcID, BR_Field, srcType, , colSrcType)
+            tgtVal = tgtValues(1)
+    End If
+        
+'Complex parameter handling
+    If InStr(BR_P1, "//") > 0 Then BR_P1 = solveComplexParam(BR_P1, currFR, currFRT)
+    If InStr(BR_P2, "//") > 0 Then BR_P2 = solveComplexParam(BR_P2, currFR, currFRT)
+
+'Field Data Type
+    If BR_Field <> "new_transaction" And Not isSpecField(BR_Field) Then fieldDataType = getFieldProperties(arrMap, BR_Field)(2) Else fieldDataType = "Text"
+
+'Evaluation
+    result = evaluateBR(tgtVal, BR_P1, BR_Op, BR_P2, fieldDataType)
+    
+'Output (next lines of BR)
+    If result = True Then
+        strFollowUpRule = BR_T
+    ElseIf Not IsEmpty(result) And result = False Then
+        strFollowUpRule = BR_F
+    Else
+        strFollowUpRule = "" 'in this case, result is EMPTY (target value is empty, and operator is not missing/not_missing), so we skip br
+    End If
+    
+    If strFollowUpRule <> "" Then
+        lngFollowUpRule = findNextBrRow(arrBR, strFollowUpRule)
+    Else
+        lngFollowUpRule = 0
+        'Write error if false
+            If Not IsEmpty(result) Then
+            If result = False And BR_Desc <> "" Then
+                'If alrdy has this error! - for A1, if one FR has multiple TRN, to avoid writing it twice!
+                If InStr(arrSheets(sheetID)(tgtValues(2), UBound(arrSheets(sheetID), 2)), BR_Desc) = 0 Then
+                    If IsEmpty(arrSheets(sheetID)(tgtValues(2), UBound(arrSheets(sheetID), 2))) Then
+                        arrSheets(sheetID)(tgtValues(2), UBound(arrSheets(sheetID), 2)) = "[1] " & BR_Desc
+                    Else
+                        arrSheets(sheetID)(tgtValues(2), UBound(arrSheets(sheetID), 2)) = _
+                        arrSheets(sheetID)(tgtValues(2), UBound(arrSheets(sheetID), 2)) & vbNewLine & _
+                        getErrNr(CStr(arrSheets(sheetID)(tgtValues(2), UBound(arrSheets(sheetID), 2)))) & BR_Desc
+                    End If
+                End If
+            End If
+            End If
+    End If
+    
+    ReDim output(1 To 2)
+    output(1) = lngFollowUpRule
+    output(2) = result
+    
+runBrRow = output
+
+End Function
+
+Function getComplexValues(strInput As Variant) As String()
+
+'returns an array of 1 or more complex fields "//entity.field" from the complex parameter
+'____________________________________________________________________________________________
+
+Dim startIndex As Integer
+Dim endIndex As Integer
+Dim valueCount As Integer
+Dim values() As String
+Dim valueIndex As Integer
+Dim symbols()
+Dim symbol As Variant
+Dim tempIndex As Integer
+Dim minIndex As Integer
+Dim i As Integer
+
+    'Identify number of complex values, set up initial vars
+        valueCount = (Len(strInput) - Len(WorksheetFunction.Substitute(strInput, "//", ""))) / 2
+        ReDim values(1 To valueCount)
+        startIndex = 1
+        valueIndex = 1
+        symbols = Array("+", "-", "/", "*")
+    
+    'Extract Values
+        For i = 1 To valueCount
+            startIndex = InStr(startIndex, strInput, "//")
+            
+            'Find first arithmetic symbol (if any) for the field in question (delimiters)
+                minIndex = Len(strInput) + 1
+                For Each symbol In symbols
+                    tempIndex = InStr(startIndex + 2, strInput, symbol)
+                    If tempIndex > 0 And tempIndex < minIndex Then minIndex = tempIndex
+                Next symbol
+                endIndex = minIndex
+                
+            'Pass values, increase vars for loop
+                values(valueIndex) = Mid(strInput, startIndex, endIndex - startIndex)
+                valueIndex = valueIndex + 1
+                startIndex = endIndex
+        Next i
+        
+        'Return val
+            getComplexValues = values
+
+End Function
+
+Function splitComplexValues(strInput As Variant) As String()
+
+'splits "//entity.field" to an array containing the entity and field values separately
+'____________________________________________________________________________________________
+
+Dim substrings() As String
+Dim dotIndex As Integer
+
+dotIndex = InStr(strInput, ".")
+
+ReDim substrings(1 To 2)
+
+    'Extract Values
+        substrings(1) = Mid(strInput, 3, dotIndex - 3) 'as first 2 chars are "//"; this is the entity
+        substrings(2) = Mid(strInput, dotIndex + 1) 'this is the field name
+        
+    'Return array
+        splitComplexValues = substrings
+
+End Function
+
+Function solveComplexParam(param As Variant, frID As String, frtID As String) As Variant
+
+'solves the whole complex parameter and arithmetics within it
+'____________________________________________________________________________________________
+
+Dim complexVals As Variant
+Dim subVals As Variant
+Dim results As Variant
+Dim returnValues As Variant
+Dim j As Long
+Dim c_sheetID As Integer
+Dim c_field As String
+Dim c_srcID As String
+Dim c_srcType As Boolean
+Dim c_colSrcType As Boolean
+Dim c_dType As String
+Dim c_symbols()
+Dim contains_symbols As Boolean
+Dim convertedFunc As Variant
+Dim calculatedField As Variant
+
+    complexVals = getComplexValues(param)
+    ReDim results(1 To UBound(complexVals))
+    
+    'For each complex entity.field value
+        For j = LBound(complexVals) To UBound(complexVals)
+            'Split entity and field values
+                subVals = splitComplexValues(CStr(complexVals(j)))
+            
+            'Special Cases
+                If isSpecField(subVals(2)) Then
+                    results(j) = getSpecField(subVals(2))
+                    Exit For
+                End If
+            
+            'Find Value
+                c_sheetID = getSheetID(CStr(subVals(1)))
+                c_field = subVals(2)
+                
+                'Set FR ID/FR ID & FRT ID to search on
+                    If c_sheetID = 1 Then
+                        c_srcID = frID
+                        c_srcType = False
+                        c_colSrcType = True
+                    Else
+                        c_srcID = frID & frtID
+                        c_srcType = True
+                        c_colSrcType = False
+                    End If
+                
+                'Get value
+                    returnValues = getFieldValue(arrSheets(c_sheetID), c_srcID, c_field, c_srcType, , c_colSrcType)
+                    results(j) = returnValues(1)
+                'Convert if required (only date, as for others we evaluate with string function
+                    c_dType = getFieldProperties(arrMap, c_field)(2)
+                    Select Case c_dType
+                        'Case "Number"
+                            'results(j) = CVar(results(j))
+                        Case "Date"
+                            results(j) = CDbl(CDate(results(j))) 'serial number
+                        'Case Else
+                            'results(j) = CStr(results(j))
+                    End Select
+        Next j
+        
+    'Replace complex fields with retrieved values in the complex function
+        convertedFunc = param
+        For j = 1 To UBound(complexVals)
+            convertedFunc = Replace(convertedFunc, complexVals(j), results(j))
+        Next j
+        
+    'Calculate field (if contains arithmetic symbols)
+        c_symbols = Array("+", "-", "/", "*")
+        contains_symbols = False
+        For j = LBound(c_symbols) To UBound(c_symbols)
+            If InStr(convertedFunc, c_symbols(j)) > 0 Then contains_symbols = True
+        Next j
+        
+        If contains_symbols = True Then
+            calculatedField = Application.Evaluate(convertedFunc)
+        Else
+            If IsNumeric(convertedFunc) Then calculatedField = CDbl(convertedFunc) Else calculatedField = convertedFunc
+        End If
+
+solveComplexParam = calculatedField
+
+End Function
+
+Function isUnreqRule(ruleID As Variant) As Boolean
+
+'Contains the list of unrequired rules -> rules that we ignore based on ICE input
+'____________________________________________________________________________________________
+
+Dim i As Long, cntr As Long
+Dim unreqRules As Variant
+
+unreqRules = Array("DQ_C_59", _
+                   "DQ_C_62", _
+                   "DQ_C_75", _
+                   "DQ_C_105", _
+                   "DQ_C_33", _
+                   "DQ_C_40", _
+                   "DQ_C_51", _
+                   "DQ_C_63", _
+                   "DQ_C_42", _
+                   "DQ_C_2", _
+                   "DQ_C_3", _
+                   "DQ_C_54", _
+                   "MD_E_17", _
+                   "MD_E_18", _
+                   "MD_E_20", _
+                   "MD_E_22")
+
+cntr = 0
+
+    For i = LBound(unreqRules) To UBound(unreqRules)
+        If ruleID = unreqRules(i) Then
+            cntr = cntr + 1
+            Exit For
+        End If
+    Next i
+
+If cntr = 0 Then isUnreqRule = False Else isUnreqRule = True
+
+End Function
+
+Function getErrNr(errStr As String) As String
+
+'Returns the next error number to be written in the error column (i.e. if [1], [2] is present, it will return 2+1 = 3)
+'____________________________________________________________________________________________
+
+Dim regex As Object
+Dim match As Object
+Dim matches As Object
+Dim maxNr As Integer
+Dim number As Integer
+
+'Set up pattern to search in (any digits between [])
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Pattern = "\[(\d+)\]"
+    regex.Global = True
+    'Get matches:
+        Set matches = regex.Execute(errStr)
+        
+'Find the maximum number
+    maxNr = 0
+    For Each match In matches
+        number = CInt(match.submatches(0))
+        If number > maxNr Then maxNr = number
+    Next match
+
+getErrNr = "[" & maxNr + 1 & "] "
+
+End Function
