@@ -10,11 +10,11 @@ Sub CalculateTotal()
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
 
     ' Add header for the Total column
-    ws.Cells(1, 5).Value = "Total" ' Assuming Total goes in column E
+    ws.Cells(1, 6).Value = "Total" ' Assuming Total goes in column F
 
     ' Loop through each row to sum Value 1 and Value 2
     For i = 2 To lastRow ' Assuming data starts from row 2
-        ws.Cells(i, 5).Value = ws.Cells(i, 3).Value + ws.Cells(i, 4).Value ' Value 1 is in column C, Value 2 is in column D
+        ws.Cells(i, 6).Value = ws.Cells(i, 3).Value + ws.Cells(i, 4).Value ' Value 1 is in column C, Value 2 is in column D
     Next i
 End Sub
 
@@ -38,11 +38,21 @@ Sub HighlightEnergyCells()
 End Sub
 
 Sub RunAllTransactions()
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim errorCount As Long
+
+    ' Set the worksheet you want to work with
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change to your sheet name
+
     ' Validate inputs before proceeding
     ValidateInputs
 
     ' Check if there are any errors
-    If Application.WorksheetFunction.CountIf(ThisWorkbook.Sheets("Sheet1").Range("A2:A1000"), "<=1000") = 1000 Then
+    errorCount = Application.WorksheetFunction.CountIf(ws.Range("E2:E1000"), "Error") ' Assuming "Error" is used for invalid inputs in column E
+
+    If errorCount = 0 Then
+        ' If there are no errors, proceed to calculate totals and highlight energy cells
         CalculateTotal
         HighlightEnergyCells
     Else
