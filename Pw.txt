@@ -1,0 +1,7 @@
+Public strPW As String
+
+Public Sub setPW()
+
+    strPW = "EIF_InclusionMacro"
+
+End Sub
