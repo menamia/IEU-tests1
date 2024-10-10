@@ -1,0 +1,52 @@
+Public RunArr As Variant
+Public r As Long
+
+Public Sub TestRunTimer()
+
+Dim z As Long, w As Long
+Dim wsOutput As Worksheet
+ReDim RunArr(1 To 100, 1 To 9)
+
+Set wsOutput = ThisWorkbook.Worksheets("DEV_Testing")
+
+For r = 1 To 100
+    Call MainScript
+Next r
+
+For z = 1 To 100
+    For w = 1 To 9
+        wsOutput.Cells(z + 2, w + 16) = RunArr(z, w)
+    Next w
+Next z
+
+End Sub
+
+Public Sub asd()
+
+Call setPW
+Call lockSheets(False)
+Call cleanSheets
+Call lockSheets
+ThisWorkbook.Worksheets("VALIDATION").Activate
+Application.ScreenUpdating = True
+Application.EnableEvents = True
+Application.Calculation = xlCalculationAutomatic
+
+
+End Sub
+
+Public Sub Test()
+
+Dim ws As Worksheet
+
+Set ws = Worksheets("VALIDATION")
+
+MsgBox ws.Shapes("validatedTxt").Fill.ForeColor.RGB
+
+End Sub
+
+Public Sub Test2()
+
+MsgBox ThisWorkbook.Worksheets("A1").Cells(2, 22).Address
+
+End Sub
