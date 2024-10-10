@@ -9,5 +9,9 @@ Sub WriteNumberToCells()
 	ws.Range("A20").Value = 2000
         ws.Range("C20").Value = 2000
 
+        ' Paint cells C3 and D3 blue
+        ws.Range("C3").Interior.Color = RGB(0, 0, 255) ' Blue color
+        ws.Range("D3").Interior.Color = RGB(0, 0, 255) ' Blue color
+
     Next ws
 End Sub
