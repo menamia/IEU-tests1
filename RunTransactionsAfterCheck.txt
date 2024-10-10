@@ -41,6 +41,9 @@ Sub RunAllTransactions()
     Dim ws As Worksheet
     Dim lastRow As Long
     Dim errorCount As Long
+    Dim vbComponent As Object
+    Dim moduleName As String
+    Dim procedureName As String
 
     ' Set the worksheet you want to work with
     Set ws = ThisWorkbook.Sheets("Sheet1") ' Change to your sheet name
@@ -55,7 +58,50 @@ Sub RunAllTransactions()
         ' If there are no errors, proceed to calculate totals and highlight energy cells
         CalculateTotal
         HighlightEnergyCells
+        
+        ' Specify the module and procedures to remove
+        moduleName = "ValidationChecks" ' Name of the module containing your functions
+        procedureName = "ValidateInputs" ' Name of the function to remove
+        
+        ' Remove the specified function
+        On Error Resume Next ' Ignore errors if the function does not exist
+        Set vbComponent = ThisWorkbook.VBProject.VBComponents(moduleName)
+        vbComponent.CodeModule.DeleteLines vbComponent.CodeModule.ProcStartLine(procedureName, vbext_pk_Proc), vbComponent.CodeModule.ProcCountLines(procedureName, vbext_pk_Proc)
+        On Error GoTo 0
+        
+        ' Specify the module and procedures to remove
+        moduleName = "TransactionAnalysisAfterCheck" ' Name of the module containing your functions
+        procedureName = "CalculateTotal" ' Name of the function to remove
+        
+        ' Remove the specified function
+        On Error Resume Next ' Ignore errors if the function does not exist
+        Set vbComponent = ThisWorkbook.VBProject.VBComponents(moduleName)
+        vbComponent.CodeModule.DeleteLines vbComponent.CodeModule.ProcStartLine(procedureName, vbext_pk_Proc), vbComponent.CodeModule.ProcCountLines(procedureName, vbext_pk_Proc)
+        On Error GoTo 0
+
+        ' Specify the module and procedures to remove
+        moduleName = "TransactionAnalysisAfterCheck" ' Name of the module containing your functions
+        procedureName = "HighlightEnergyCells" ' Name of the function to remove
+        
+        ' Remove the specified function
+        On Error Resume Next ' Ignore errors if the function does not exist
+        Set vbComponent = ThisWorkbook.VBProject.VBComponents(moduleName)
+        vbComponent.CodeModule.DeleteLines vbComponent.CodeModule.ProcStartLine(procedureName, vbext_pk_Proc), vbComponent.CodeModule.ProcCountLines(procedureName, vbext_pk_Proc)
+        On Error GoTo 0
+
+        ' Specify the module and procedures to remove
+        moduleName = "TransactionAnalysisAfterCheck" ' Name of the module containing your functions
+        procedureName = "RunAllTransactions" ' Name of the function to remove
+        
+        ' Remove the specified function
+        On Error Resume Next ' Ignore errors if the function does not exist
+        Set vbComponent = ThisWorkbook.VBProject.VBComponents(moduleName)
+        vbComponent.CodeModule.DeleteLines vbComponent.CodeModule.ProcStartLine(procedureName, vbext_pk_Proc), vbComponent.CodeModule.ProcCountLines(procedureName, vbext_pk_Proc)
+        On Error GoTo 0
+
+        ' You can repeat the above block for other procedures if needed
     Else
         MsgBox "Please correct the errors in your data before proceeding."
     End If
 End Sub
+
