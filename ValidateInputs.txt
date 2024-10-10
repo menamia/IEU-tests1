@@ -1,0 +1,45 @@
+Sub ValidateInputs()
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim i As Long
+    Dim areaValid As Boolean
+    
+    ' Set the worksheet you want to work with
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change to your sheet name
+
+    ' Find the last row with data in column A (Number_ID)
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    ' Loop through each row to validate inputs
+    For i = 2 To lastRow ' Assuming data starts from row 2
+        ' Check Number_ID
+        If ws.Cells(i, 1).Value < 0 Or ws.Cells(i, 1).Value > 1000 Then
+            ws.Cells(i, 1).Interior.Color = RGB(255, 0, 0) ' Highlight in red
+        Else
+            ws.Cells(i, 1).Interior.ColorIndex = xlNone ' Clear any previous highlight
+        End If
+        
+        ' Check Area
+        areaValid = (ws.Cells(i, 2).Value = "Energy" Or ws.Cells(i, 2).Value = "Education" Or ws.Cells(i, 2).Value = "Water")
+        If Not areaValid Then
+            ws.Cells(i, 2).Interior.Color = RGB(255, 0, 0) ' Highlight in red
+        Else
+            ws.Cells(i, 2).Interior.ColorIndex = xlNone ' Clear any previous highlight
+        End If
+        
+        ' Check Values 1 and 2
+        If ws.Cells(i, 3).Value <= 0 Then
+            ws.Cells(i, 3).Interior.Color = RGB(255, 0, 0) ' Highlight in red
+        Else
+            ws.Cells(i, 3).Interior.ColorIndex = xlNone ' Clear any previous highlight
+        End If
+        
+        If ws.Cells(i, 4).Value <= 0 Then
+            ws.Cells(i, 4).Interior.Color = RGB(255, 0, 0) ' Highlight in red
+        Else
+            ws.Cells(i, 4).Interior.ColorIndex = xlNone ' Clear any previous highlight
+        End If
+    Next i
+
+    MsgBox "Input validation completed."
+End Sub
