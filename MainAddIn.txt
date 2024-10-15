@@ -1,0 +1,671 @@
+'GLOBAL VARS
+
+    'BR column numbers in array
+        Public colBR_UID As Long
+        Public colBR_RNum As Long
+        Public colBR_Entity As Long
+        Public colBR_Field As Long
+        Public colBR_Op As Long
+        Public colBR_P1 As Long
+        Public colBR_P2 As Long
+        Public colBR_T As Long
+        Public colBR_F As Long
+        Public colBR_Desc As Long
+    
+    'Arrays
+        Public arrSheets As Variant
+        Public arrMap As Variant
+        Public arrModif As Variant
+        Public arrSect As Variant
+    
+    'IDs
+        Public currFRT As String
+        Public currFR As String
+        
+    'DEBUGGING
+        Public strTestStage As String
+        Public strTestWs As String
+        Public strTestWsRow As String
+        Public strTestWsCol As String
+        Public strTestBRNum As String
+        Public arrDbg As Variant
+        
+    'OTHER
+        Public gloHasErrors As Boolean
+
+Public Sub MainScript()
+
+'VARIABLES
+    'WORKBOOK VARIABLES
+        Dim wsMap As Worksheet
+        Dim wsBR As Worksheet
+        Dim wsRun As Worksheet
+    
+    'CONSTANTS
+        Dim isCG As Boolean
+    
+    'VARS
+        Dim sheetID As Integer
+        Dim nextRule As Variant
+    
+    'Sheet values
+        Dim lr_B As Long
+        Dim lc As Long
+        Dim lc_checked As Long
+    
+    'LOOP VARS
+        Dim a As Long
+        Dim b As Long
+        Dim c As Long
+        Dim ws As Worksheet
+    
+    'ARRAYS
+        Dim arrBR As Variant
+        Dim arrModifSht As Variant
+        Dim arrModifRow As Variant
+        Dim arrModifCol As Variant
+        
+    'OTHER VARS
+        Dim sheetName As String
+        Dim addedCol As Long
+        Dim tgtValue As Variant
+        Dim resultBR As Boolean
+        Dim diErrorMsg As String
+        Dim mandErrorMsg As String
+        Dim dqErrorMsg As String
+        Dim strSusList As String
+        Dim fieldProperties As Variant
+        Dim dqEvaluation As Variant
+        Dim reqNewEntities As Variant
+        Dim strModifSht As String
+        Dim strModifRow As String
+        Dim strModifCol As String
+        Dim tempArr As Variant
+    
+    'TIMERS
+        Dim startTime As Single
+        'CLEAN
+            Dim cleanTimeStart As Single
+            Dim cleanTimeEnd As Single
+            Dim cleanTime As Single
+        'READING
+            Dim readTimeStart As Single
+            Dim readTimeEnd As Single
+            Dim readTime As Single
+        'DI & DQ
+            Dim didqTimeStart As Single
+            Dim didqTimeEnd As Single
+            Dim didqTime As Single
+            'DUPLICATES
+                Dim duplTimeStart As Single
+                Dim duplTimeEnd As Single
+                Dim duplTime As Single
+            'INTEGRITY
+                Dim diTimeStart As Single
+                Dim diTimeEnd As Single
+                Dim diTime As Single
+            'DTYPE, DICT & MANDATORY
+                Dim dqTimeStart As Single
+                Dim dqTimeEnd As Single
+                Dim dqTime As Single
+        'BR
+            Dim brTimeStart As Single
+            Dim brTimeEnd As Single
+            Dim brTime As Single
+        'OUTPUT
+            Dim writeTimeStart As Single
+            Dim writeTimeEnd As Single
+            Dim writeTime As Single
+        'TOTAL
+            Dim endTime As Single
+            Dim totalTime As Single
+        
+'________________________________________________________________________________________________________
+'
+'SET-UP
+
+    'TIMER & DEBUGGING
+        Application.ScreenUpdating = False
+        Application.EnableEvents = False
+        Application.Calculation = xlCalculationManual
+        startTime = Timer
+        strTestStage = ""
+        strTestWs = ""
+        strTestWsRow = ""
+        strTestWsCol = ""
+        strTestBRNum = ""
+        On Error GoTo errHandling
+        strTestStage = "Set-Up"
+        
+    'UNPROTECT SHEETS
+        Call setPW
+        Call lockSheets(False)
+        
+    'OBJECTS
+        Set wsMap = ActiveWorkbook.Worksheets("MAP")
+        Set wsBR = ActiveWorkbook.Worksheets("BR")
+        Set wsRun = ActiveWorkbook.Worksheets("VALIDATION")
+        
+        If wsRun.Range("XX100") = "DIRECT GUARANTEE" Then isCG = False Else isCG = True
+
+        'PREPARATION STEP: CLEAN FORMATTING & ERROR COLS
+        strTestStage = "Cleaning"
+        cleanTimeStart = Timer
+        Call cleanSheets
+        cleanTimeEnd = Timer
+        
+        'RELEVANT INCLUSION SHEETS
+        strTestStage = "Read Sheets"
+        readTimeStart = Timer
+            ReDim arrSheets(1 To 9)
+            For Each ws In ActiveWorkbook.Worksheets
+                If getSheetID(ws.Name) <> 0 Then 'non-relevant inclusion sheet
+                    strTestWs = CStr(getSheetID(ws.Name))
+                    If getSheetID(ws.Name) = 4 Then addedCol = 1 Else addedCol = 0 'adding extra col for new_transactions field for B sheet
+                    arrSheets(getSheetID(ws.Name)) = readSheet(ws.Name, addedCol)
+                End If
+            Next ws
+            strTestWs = ""
+        
+        'SECTOR CLEANING & READING
+            'Sector List
+            arrSect = WorksheetFunction.Transpose(wsRun.Range("YA100:YA1095"))
+            'Clean
+            If Not IsEmpty(arrSheets(1)) Then
+                If UBound(arrSheets(1), 1) >= 4 Then
+                    Call cleanSector(arrSheets(1), arrSect)
+                End If
+            End If
+            
+        'B SHEET LR (main loop, as it has all trn except E sheet)
+            strTestStage = "New_TRN"
+            lr_B = UBound(arrSheets(getSheetID("B")), 1)
+            
+                'NEW_TRN FOR B SHEET
+                    If Not IsEmpty(arrSheets(2)) And Not IsEmpty(arrSheets(4)) Then
+                        arrSheets(4)(3, UBound(arrSheets(4), 2) - 1) = "new_transaction"
+                        For a = 4 To lr_B
+                            For b = 4 To UBound(arrSheets(2), 1)
+                                strTestWs = "4"
+                                strTestWsRow = CStr(a)
+                                strTestWsCol = CStr(b)
+                                If arrSheets(4)(a, 1) & arrSheets(4)(a, 2) = arrSheets(2)(b, 1) & arrSheets(2)(b, 2) Then
+                                    arrSheets(4)(a, UBound(arrSheets(4), 2) - 1) = "Y"
+                                    Exit For
+                                End If
+                            Next b
+                        Next a
+                    End If
+                    strTestWs = ""
+                    strTestWsRow = ""
+                    strTestWsCol = ""
+            
+            
+        'MAPPING & BR SHEETS
+            strTestStage = "Read Map & BR"
+            arrMap = readMAP(wsMap)
+            arrBR = readBR(wsBR)
+                'BR relevant columns
+                    colBR_UID = getArrCol(arrBR, "unique_id")
+                    colBR_RNum = getArrCol(arrBR, "rule_number")
+                    colBR_Entity = getArrCol(arrBR, "checked_entity")
+                    colBR_Field = getArrCol(arrBR, "checked_field")
+                    colBR_Op = getArrCol(arrBR, "operator")
+                    colBR_P1 = getArrCol(arrBR, "param_1_value")
+                    colBR_P2 = getArrCol(arrBR, "param_2_value")
+                    colBR_T = getArrCol(arrBR, "truepart_id")
+                    colBR_F = getArrCol(arrBR, "falsepart_id")
+                    colBR_Desc = getArrCol(arrBR, "description")
+        
+        readTimeEnd = Timer
+
+'________________________________________________________________________________________________________
+'
+'DATA QUALITY CHECK (! could be included in BR check, as I see there are validation rules in BR (?))
+strTestStage = "Duplicates"
+didqTimeStart = Timer
+
+    'DUPLICATE CHECKS
+    duplTimeStart = Timer
+        'A1 - FR ID & COUNTRY
+            strTestWs = "1"
+            If Not IsEmpty(arrSheets(1)) Then
+                If UBound(arrSheets(1), 1) >= 4 Then
+                    Call checkDuplicates(arrSheets(1), 1, 9)
+                End If
+            End If
+            
+            
+        'OTHER SHEETS - FR ID & FRT REF
+            For a = 2 To 9
+                strTestWs = CStr(a)
+                If Not IsEmpty(arrSheets(a)) Then
+                    If UBound(arrSheets(a), 1) >= 4 Then
+                        Call checkDuplicates(arrSheets(a), 1, 2)
+                    End If
+                End If
+            Next a
+            strTestWs = ""
+            strTestWsRow = ""
+
+    duplTimeEnd = Timer
+            
+    'CROSS-SHEET CHECKS
+    strTestStage = "DI"
+    diTimeStart = Timer
+        'A1 IN A2
+            strTestWs = "1 to 2"
+            diErrorMsg = "Make sure that the transaction data is populated on the A2 tab. Otherwise delete the A1 input in case no transaction is originated within the relevant reporting period."
+            If Not IsEmpty(arrSheets(1)) And Not IsEmpty(arrSheets(2)) Then Call crossCheck(arrSheets(1), arrSheets(2), diErrorMsg, False)
+        'A2 IN A1
+            strTestWs = "2 to 1"
+            diErrorMsg = "Make sure that the recipient data is populated on the A1 tab. Otherwise delete the A2 input in case no transaction is originated within the relevant reporting period."
+            If Not IsEmpty(arrSheets(1)) And Not IsEmpty(arrSheets(2)) Then Call crossCheck(arrSheets(2), arrSheets(1), diErrorMsg, False)
+        'A1 IN A3
+            strTestWs = "1 to 3"
+            diErrorMsg = "Make sure that the guarantee/sub-operation data is populated on the A3 tab. Otherwise delete the A1 input in case no sub-operation is originated within the relevant reporting period."
+            If Not IsEmpty(arrSheets(1)) And Not IsEmpty(arrSheets(3)) And isCG = True Then _
+                                         Call crossCheck(arrSheets(1), arrSheets(3), diErrorMsg, False)
+        'A3 IN A1
+            strTestWs = "3 to 1"
+            diErrorMsg = "Make sure that the recipient data is populated on the A1 tab. Otherwise delete the A3 input in case no sub-operation is originated within the relevant reporting period."
+            If Not IsEmpty(arrSheets(1)) And Not IsEmpty(arrSheets(3)) And isCG = True Then _
+                                         Call crossCheck(arrSheets(3), arrSheets(1), diErrorMsg, False)
+        'A2 IN A3
+            strTestWs = "2 to 3"
+            diErrorMsg = "Make sure that the guarantee/sub-operation data is populated on the A3 tab. Otherwise delete the A2 input in case no sub-operation is originated within the relevant reporting period."
+            If Not IsEmpty(arrSheets(2)) And Not IsEmpty(arrSheets(3)) And isCG = True Then _
+                                         Call crossCheck(arrSheets(2), arrSheets(3), diErrorMsg)
+        'A3 IN A2
+            strTestWs = "3 to 2"
+            diErrorMsg = "Make sure that the transaction data is populated on the A2 tab. Otherwise delete the A3 input in case no sub-operation is originated within the relevant reporting period."
+            If Not IsEmpty(arrSheets(2)) And Not IsEmpty(arrSheets(3)) And isCG = True Then _
+                                         Call crossCheck(arrSheets(3), arrSheets(2), diErrorMsg)
+        'A2 IN B
+            strTestWs = "2 to 4"
+            diErrorMsg = "All included transactions should be reported on the B tab. Ensure that the newly included transaction from the A2 tab is reflected on the B tab."
+            If Not IsEmpty(arrSheets(2)) And Not IsEmpty(arrSheets(4)) Then Call crossCheck(arrSheets(2), arrSheets(4), diErrorMsg)
+        'D IN B
+            strTestWs = "5 to 4"
+            diErrorMsg = "All covered transactions (including those that are defaulted, repaid and performing) should be reported on the B tab."
+            If Not IsEmpty(arrSheets(4)) And Not IsEmpty(arrSheets(5)) Then Call crossCheck(arrSheets(5), arrSheets(4), diErrorMsg)
+        'E EX B
+            strTestWs = "6 to 4"
+            diErrorMsg = "No excluded transactions should be reported on the B tab, please delete the relevant line."
+            If Not IsEmpty(arrSheets(4)) And Not IsEmpty(arrSheets(6)) Then Call crossCheck(arrSheets(6), arrSheets(4), diErrorMsg, , False)
+        'S11 in A2 (MF)
+            strTestWs = "7 to 2"
+            diErrorMsg = "Make sure that the relevant transaction is on the A2 tab and that the transaction is originated under the 'Microfinance' portfolio."
+            If Not IsEmpty(arrSheets(7)) And Not IsEmpty(arrSheets(2)) Then
+                Call crossCheckCond(arrSheets(7), arrSheets(2), "thematic_product", "MICROFINANCE", "=", diErrorMsg)
+            End If
+        'S12 in A2 (SE)
+            strTestWs = "8 to 2"
+            diErrorMsg = "Make sure that the relevant transaction is on the A2 tab and that the transaction is originated under the 'Social Entrepreneurship' portfolio."
+            If Not IsEmpty(arrSheets(8)) And Not IsEmpty(arrSheets(2)) Then
+                Call crossCheckCond(arrSheets(8), arrSheets(2), "thematic_product", "SOCIAL ENTREPRENEURSHIP", "=", diErrorMsg)
+            End If
+        'S3 in A2 (specific prod. eligibility)
+            strTestWs = "9 to 2"
+            strSusList = "2.1.1,2.1.2,2.1.3,2.1.4,2.1.6,2.2.1,2.2.2,2.2.3,2.3.1,2.3.2,2.4.1,2.4.2"
+            diErrorMsg = "Make sure that the relevant transaction is on the A2 tab and that the transaction is originated under a Product Eligibility Criteria corresponding to the following reported codes (as per the Use Case Document) - 2.1.1, 2.1.2, 2.1.3, 2.1.4, 2.1.6, 2.2.1, 2.2.2, 2.2.3, 2.3.1, 2.3.2, 2.4.1, 2.4.2."
+            If Not IsEmpty(arrSheets(9)) And Not IsEmpty(arrSheets(2)) Then
+                Call crossCheckCond(arrSheets(9), arrSheets(2), "thematic_product_eligibility", strSusList, "in", diErrorMsg)
+            End If
+        'A2 in S3 (specifi prod. eligibility)
+            strTestWs = "2 to 9"
+            diErrorMsg = "Make sure that the relevant information for this transaction is populated also on the S3 tab."
+            If Not IsEmpty(arrSheets(9)) And Not IsEmpty(arrSheets(2)) Then
+                Call crossCheckCond(arrSheets(2), arrSheets(9), "thematic_product_eligibility", strSusList, "in", diErrorMsg, False)
+            End If
+     diTimeEnd = Timer
+     strTestWs = ""
+            
+    
+    'DATATYPES, DICTIONARIES & MANDATORY FIELDS CHECK
+    strTestStage = "DQ"
+    dqTimeStart = Timer
+    'Initialize value modifications for untrimmed data (used in dtype checks)
+        strModifSht = ""
+        strModifRow = ""
+        strModifCol = ""
+    
+    
+        For a = LBound(arrSheets) To UBound(arrSheets)                                                          'FOR EACH SHEET
+            If (Not IsEmpty(arrSheets(a))) And (UBound(arrSheets(a), 1) >= 4) Then                              'IF THERE ARE DATAPOINTS
+                lc = UBound(arrSheets(a), 2)
+                If a = 4 Then 'for B sheet we have new_trn, so we check until LC - 2
+                    lc_checked = UBound(arrSheets(a), 2) - 2
+                Else
+                    lc_checked = UBound(arrSheets(a), 2) - 1 'otherwise we remove only the error col
+                End If
+                For b = LBound(arrSheets(a), 2) To lc_checked                                                   'FOR EACH FIELD
+                    fieldProperties = getFieldProperties(arrMap, arrSheets(a)(3, b))
+                    mandErrorMsg = "The [" & arrSheets(a)(3, b) & "] field is mandatory and cannot be empty."
+                    
+                    For c = 4 To UBound(arrSheets(a), 1)                                                        'FOR EACH ROW
+                        
+                        strTestWs = CStr(a)
+                        strTestWsRow = CStr(c)
+                        strTestWsCol = CStr(b)
+                        
+                        'Mandatory field check
+                        strTestStage = "DQ_Mandatory"
+                            If fieldProperties(1) = "Y" Then
+                                If IsEmpty(arrSheets(a)(c, b)) Or (arrSheets(a)(c, b) = "") Then
+                                    If IsEmpty(arrSheets(a)(c, lc)) Then
+                                        arrSheets(a)(c, lc) = "[1] " & mandErrorMsg
+                                    Else
+                                        arrSheets(a)(c, lc) = arrSheets(a)(c, lc) & vbNewLine & _
+                                                              getErrNr(CStr(arrSheets(a)(c, lc))) & mandErrorMsg
+                                    End If
+                                End If
+                            End If
+    '--- TESTING ---
+    'If a = 2 And b = 25 And c = 6 Then
+    'MsgBox "Here"
+    'End If
+                        'DataType Check
+                        strTestStage = "DQ_Datatype"
+                        If InStr(arrSheets(a)(c, lc), mandErrorMsg) = 0 Then 'if it has mandatory field error, don't run dtype check!
+                            dqEvaluation = evaluateDataType(arrSheets(a)(c, b), fieldProperties(2), fieldProperties(3))
+                            If Not IsEmpty(arrSheets(a)(c, b)) Then
+                                If dqEvaluation(1) = False Then
+                                    dqErrorMsg = "The [" & arrSheets(a)(3, b) & dqEvaluation(2)
+                                    If IsEmpty(arrSheets(a)(c, lc)) Then
+                                        arrSheets(a)(c, lc) = "[1] " & dqErrorMsg
+                                    Else
+                                        arrSheets(a)(c, lc) = arrSheets(a)(c, lc) & vbNewLine & _
+                                                              getErrNr(CStr(arrSheets(a)(c, lc))) & dqErrorMsg
+                                    End If
+                                Else
+                                    'If trim value is a match transform incorrect spaced data (no error output)
+                                    If Not IsEmpty(dqEvaluation(3)) Then
+                                        'Modify within array
+                                        arrSheets(a)(c, b) = dqEvaluation(3)
+                                        'Collect modification locations (will be used to output from array ONCE, not access sheet within)
+                                        If strModifSht = "" Then strModifSht = CStr(a) Else strModifSht = strModifSht & ";" & CStr(a)
+                                        If strModifRow = "" Then strModifRow = CStr(c) Else strModifRow = strModifRow & ";" & CStr(c)
+                                        If strModifCol = "" Then strModifCol = CStr(b) Else strModifCol = strModifCol & ";" & CStr(b)
+                                    End If
+                                End If
+                            End If
+                        End If
+                    Next c
+                Next b
+            End If
+        Next a
+    
+    strTestWs = ""
+    strTestWsRow = ""
+    strTestWsCol = ""
+    
+    'Trimmed output data locations array
+    strTestStage = "TrimmedData"
+        If strModifSht <> "" Then 'if at least one logged change
+            If InStr(strModifSht, ";") = 0 Then 'if only one change
+                ReDim arrModif(1 To 1, 1 To 3)
+                arrModif(1, 1) = CLng(strModifSht)
+                arrModif(1, 2) = CLng(strModifRow)
+                arrModif(1, 3) = CLng(strModifCol)
+            Else
+                'Get arrays of the datapoints
+                    arrModifSht = Split(strModifSht, ";")
+                    arrModifRow = Split(strModifRow, ";")
+                    arrModifCol = Split(strModifCol, ";")
+                'Write modification targets
+                    ReDim arrModif(1 To UBound(arrModifSht) + 1, 1 To 3)
+                    For i = 1 To UBound(arrModifSht) + 1
+                        arrModif(i, 1) = CLng(arrModifSht(i - 1))
+                        arrModif(i, 2) = CLng(arrModifRow(i - 1))
+                        arrModif(i, 3) = CLng(arrModifCol(i - 1))
+                    Next i
+            End If
+        End If
+    dqTimeEnd = Timer
+    didqTimeEnd = Timer
+    
+'Output errors, change untrimmed dictionary matches & format (1 - DI/DQ)
+    strTestStage = "Output1"
+    gloHasErrors = False
+    Call writeErr
+    If gloHasErrors = True Then
+        wsRun.Shapes("validatedTxt").TextFrame2.TextRange.Text = ""
+        Call lockSheets
+        ActiveWorkbook.Worksheets("VALIDATION").Activate
+        Application.ScreenUpdating = True
+        Application.EnableEvents = True
+        Application.Calculation = xlCalculationAutomatic
+        'Set up custom msgbox (due to coloring request, we have UF instead of MsgBox)
+        With ufResultMsg
+            .Caption = "Errors Found"
+            .txtMsg.Caption = "Data Quality Errors Found. Please correct them on the sheets containing the error column and run the macro again."
+            .txtMsg.Top = 12
+            .txtMsg.ForeColor = RGB(201, 18, 18)
+            .Show
+        End With
+        Exit Sub
+    End If
+
+'________________________________________________________________________________________________________
+'
+'BR CHECKS
+
+strTestStage = "BR"
+brTimeStart = Timer
+    For b = 4 To lr_B 'all trn on B sheet
+    
+    strTestWs = "4"
+    strTestWsRow = CStr(b)
+    
+    '--- TESTING ---
+    '--- excl. of fields removed (replaced with dupl.)
+    'If b = 7 Or b = 11 Or b = 25 Then
+    'GoTo nexttrn
+    'End If
+    
+        'Get FRT & FR ID
+            currFRT = arrSheets(4)(b, 2)
+            currFR = arrSheets(4)(b, 1)
+            
+        For a = 2 To UBound(arrBR) 'all BR's -> but we only go through unique by excluding T/F endings
+            If isUnreqRule(arrBR(a, colBR_UID)) = False Then 'if it's not an exception rule
+                strTestBRNum = CStr(arrBR(a, colBR_RNum))
+                If Right(arrBR(a, colBR_RNum), 1) <> "F" And Right(arrBR(a, colBR_RNum), 1) <> "T" Then '1st rule of each BR
+                    
+                    reqNewEntities = reqNewEntity(arrBR, a)
+                    'Check if BR requires new TRN entities -> skip rule if it does but the TRN is not new
+                    If reqNewEntities(1) = True And arrSheets(4)(b, UBound(arrSheets(4), 2) - 1) <> "Y" Then GoTo nextIteration
+                    'Check fi BR requires guarantees (and if it's a CG, then it must)
+                    If reqNewEntities(2) = True And isCG = False Then GoTo nextIteration
+    
+                    'Evaluate first BR line:
+                    nextRule = runBrRow(arrBR, a)
+                    
+    '--- TESTING ---
+    'If b = 59 Then
+    'MsgBox (arrSheets(2)(4, UBound(arrSheets(2), 2)))
+    'End If
+    
+                    'Evaluate next BR line until there is no more:
+                    If nextRule(1) = 0 Then
+                        'If FALSE -> output desc somewhere /// nextRule(2) = false -> should be implemented in func!
+                        GoTo nextIteration
+                    Else
+                        Do Until nextRule(1) = 0 'third layer of loop -> run through sub-BR lines until there is no follow up line
+                            nextRule = runBrRow(arrBR, nextRule(1))
+                        Loop
+                    End If
+                
+                End If
+            End If
+nextIteration:
+        Next a
+nexttrn:
+    Next b
+brTimeEnd = Timer
+
+'Output errors, change untrimmed dictionary matches & format (2 - BR)
+    strTestStage = "Output2"
+    writeTimeStart = Timer
+    gloHasErrors = False
+    Call writeErr
+    Call makeIdAsText
+    writeTimeEnd = Timer
+
+endTime = Timer
+
+'________________________________________________________________________________________________________
+'
+'TESTING: RUN TIME OUTPUT AND ERROR HANDLING
+
+'TIMERS
+    'CALCULATE
+        cleanTime = cleanTimeEnd - cleanTimeStart
+        readTime = readTimeEnd - readTimeStart
+        didqTime = didqTimeEnd - didqTimeStart
+        duplTime = duplTimeEnd - duplTimeStart
+        diTime = diTimeEnd - diTimeStart
+        dqTime = dqTimeEnd - dqTimeStart
+        brTime = brTimeEnd - brTimeStart
+        writeTime = writeTimeEnd - writeTimeStart
+        totalTime = endTime - startTime
+    
+    'MULTI-TIME TEST OUTPUT
+        'RunArr(r, 1) = totalTime
+        'RunArr(r, 2) = cleanTime
+        'RunArr(r, 3) = readTime
+        'RunArr(r, 4) = didqTime
+        'RunArr(r, 5) = duplTime
+        'RunArr(r, 6) = diTime
+        'RunArr(r, 7) = dqTime
+        'RunArr(r, 8) = brTime
+        'RunArr(r, 9) = writeTime
+    
+    'SIGNLE-TIME TEST MSGBOX
+        'MsgBox ("Total runtime: " & totalTime & vbNewLine & vbNewLine & _
+               "Read time: " & readTime & vbNewLine & _
+               "Data checks time: " & didqTime & vbNewLine & _
+               "     - duplicates: " & duplTime & vbNewLine & _
+               "     - integrity: " & diTime & vbNewLine & _
+               "     - quality: " & dqTime & vbNewLine & _
+               "BR checks time: " & brTime & vbNewLine & _
+               "Output time: " & writeTime)
+
+Application.ScreenUpdating = True
+If gloHasErrors = True Then
+    'Set up custom msgbox (due to coloring request, we have UF instead of MsgBox)
+        With ufResultMsg
+            .Caption = "Errors Found"
+            .txtMsg.Caption = "Data Consistency Errors Found. Please correct them on the sheets containing the error column and run the macro again."
+            .txtMsg.Top = 12
+            .txtMsg.ForeColor = RGB(201, 18, 18)
+            .Show
+        End With
+    wsRun.Shapes("validatedTxt").TextFrame2.TextRange.Text = ""
+Else
+    'Set up custom msgbox (due to coloring request, we have UF instead of MsgBox)
+        With ufResultMsg
+            .Caption = "Preliminary Validation Successful"
+            .txtMsg.Caption = "There were no errors found in the preliminary validation checks."
+            .txtMsg.Top = 18
+            .txtMsg.ForeColor = RGB(32, 176, 34)
+            .Show
+        End With
+    wsRun.Shapes("validatedTxt").TextFrame2.TextRange.Text = "The data has been checked with no errors found at " & Format(Now(), "yyyy-mm-dd, hh:mm")
+End If
+
+Application.ScreenUpdating = False
+Call lockSheets
+ActiveWorkbook.Worksheets("VALIDATION").Activate
+Application.ScreenUpdating = True
+Application.EnableEvents = True
+Application.Calculation = xlCalculationAutomatic
+
+'MsgBox "RunTime: " & totalTime & " seconds"
+
+Exit Sub
+'ERROR HANDLING IF DOES NOT RUN TILL THE END
+errHandling:
+    
+    'Create array
+        ReDim arrDbg(1 To 2, 1 To 6)
+        Dim viewAll As WorksheetView
+        Dim clLoc As String
+        
+        clLoc = ""
+        
+        If strTestWsRow <> "" And strTestWsCol <> "" Then
+            clLoc = Replace(CStr(Worksheets("B").Cells(CLng(strTestWsRow), CLng(strTestWsCol)).Address), "$", "")
+        End If
+        
+        If strTestWs <> "" Then strTestWs = CStr(getSheetName(CInt(strTestWs)))
+        
+        arrDbg(1, 1) = "Technical Step Stage"
+        arrDbg(1, 2) = "Sheet Name"
+        arrDbg(1, 3) = "Incorrect Data [Row]"
+        arrDbg(1, 4) = "Incorrect Data [Column]"
+        arrDbg(1, 5) = "Incorrect Data [Cell]"
+        arrDbg(1, 6) = "Technical BR ID"
+        
+        arrDbg(2, 1) = strTestStage
+        arrDbg(2, 2) = strTestWs
+        arrDbg(2, 3) = strTestWsRow
+        arrDbg(2, 4) = strTestWsCol
+        arrDbg(2, 5) = clLoc
+        arrDbg(2, 6) = strTestBRNum
+        
+    'Set new worksheet
+        Dim wsDbg As Worksheet
+        
+        Set wsDbg = ActiveWorkbook.Worksheets.Add(After:=ActiveWorkbook.Sheets(ActiveWorkbook.Sheets.Count))
+        wsDbg.Name = "DEBUG"
+        wsDbg.Tab.Color = RGB(16, 26, 101)
+    
+        For a = 1 To 2
+            For b = 1 To 6
+                wsDbg.Cells(a, b) = arrDbg(a, b)
+            Next b
+        Next a
+        
+        If wsDbg.Cells(2, 5) <> "" And wsDbg.Cells(2, 2) <> "" Then
+            wsDbg.Hyperlinks.Add Anchor:=wsDbg.Range("E2"), Address:="", SubAddress:=strTestWs & "!" & clLoc, TextToDisplay:=clLoc
+        End If
+        
+        'Style
+            With wsDbg.Range(wsDbg.Cells(1, 1).Address, wsDbg.Cells(2, 6).Address)
+                .HorizontalAlignment = xlCenter
+                .VerticalAlignment = xlCenter
+                .WrapText = True
+                .Font.Name = "Arial"
+                .Font.Size = 10
+                .Borders.LineStyle = xlContinuous
+                .Borders.Weight = xlThin
+                .Borders.Color = RGB(204, 204, 204)
+            End With
+            With wsDbg.Range("A1:F1")
+                .Font.Bold = True
+                .Interior.Color = RGB(64, 73, 164)
+                .Font.Color = vbWhite
+                .Rows.RowHeight = 25
+                .WrapText = True
+            End With
+            wsDbg.Columns.AutoFit
+            wsDbg.Columns.ColumnWidth = 15
+            
+            For Each viewAll In wsDbg.Parent.Windows(1).SheetViews
+                If viewAll.sheet.Name = wsDbg.Name Then
+                    viewAll.DisplayGridlines = False
+                    Exit For
+                End If
+            Next viewAll
+    
+    wsRun.Shapes("validatedTxt").TextFrame2.TextRange.Text = ""
+    Call lockSheets(True)
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    Application.Calculation = xlCalculationAutomatic
+    MsgBox "Please note that the file has encountered an error while running. Kindly refer to the DEBUG sheet for immediate assistance with the error encountered," & _
+           "and in any case reach out to EIF for further assistance."
+    
+End Sub
