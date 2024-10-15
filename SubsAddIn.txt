@@ -1,0 +1,537 @@
+Public Sub lockSheets(Optional remove As Boolean = True, Optional onlySht As String)
+
+'Applies protection on editing for everything except inclusion datapoints, as well as blocks formatting
+'____________________________________________________________________________________________
+
+Dim ws As Worksheet
+Dim lc As Long, lcc As Long, lr As Long
+
+Call setPW
+
+If onlySht = "" Then
+
+    'MULTISHEET
+    For Each ws In ActiveWorkbook.Worksheets
+        'Prepare: unhide, unprotect & remove filters if any
+            If ws.AutoFilterMode = True Then ws.AutoFilterMode = False
+            ws.Unprotect strPW
+            ws.Cells.Locked = False
+            If remove = False Then GoTo skipProtection
+        'Select locked cells for editing
+            If getSheetID(ws.Name) <> 0 Then
+                lc = ws.Range("A1").End(xlToRight).Column
+                lcc = ws.Range(Cells(1, lc).Address).End(xlToRight).Column
+                lr = ws.Range("A1").End(xlDown).Row
+                'Reapply Filtering
+                    ws.Range(ws.Cells(3, 1).Address, ws.Cells(lr, lc).Address).AutoFilter
+                'Lock cells
+                    ws.Range(ws.Cells(1, 1).Address, ws.Cells(3, lc).Address).Locked = True
+                    ws.Range(ws.Columns(lc + 1), ws.Columns(lcc)).Locked = True
+            Else
+                ws.Cells.Locked = True
+            End If
+        'Apply protection
+            ws.Protect Password:=strPW, DrawingObjects:=True, Contents:=True, Scenarios:=True, _
+                       AllowFormattingCells:=False, AllowFormattingColumns:=False, _
+                       AllowFormattingRows:=False, AllowInsertingColumns:=False, _
+                       AllowInsertingRows:=False, AllowInsertingHyperlinks:=False, _
+                       AllowDeletingColumns:=False, AllowDeletingRows:=False, _
+                       AllowSorting:=True, AllowFiltering:=True, AllowUsingPivotTables:=True
+            
+skipProtection:
+    Next ws
+
+'ONLY APPLICABLE ON ONE SHEET:
+Else
+    Set ws = ActiveWorkbook.Worksheets(onlySht)
+    'Prepare: unhide, unprotect & remove filters if any
+            If ws.AutoFilterMode = True Then ws.AutoFilterMode = False
+            ws.Unprotect strPW
+            ws.Cells.Locked = False
+            ws.Cells.FormulaHidden = False
+            If remove = False Then Exit Sub
+        'Select locked cells for editing
+            If getSheetID(ws.Name) <> 0 Then
+                lc = ws.Range("A1").End(xlToRight).Column
+                lcc = ws.Range(Cells(1, lc).Address).End(xlToRight).Column
+                ws.Range(ws.Cells(1, 1).Address, ws.Cells(3, lc).Address).Locked = True
+                ws.Range(ws.Columns(lc + 1), ws.Columns(lcc)).Locked = True
+            Else
+                ws.Cells.Locked = True
+            End If
+        'Apply protection
+            ws.Protect Password:=strPW, DrawingObjects:=True, Contents:=True, Scenarios:=True, _
+                       AllowFormattingCells:=False, AllowFormattingColumns:=False, _
+                       AllowFormattingRows:=False, AllowInsertingColumns:=False, _
+                       AllowInsertingRows:=False, AllowInsertingHyperlinks:=False, _
+                       AllowDeletingColumns:=False, AllowDeletingRows:=False, _
+                       AllowSorting:=True, AllowFiltering:=True, AllowUsingPivotTables:=True
+            
+End If
+
+End Sub
+
+Public Sub applyDV(Optional toAll As Boolean = False)
+
+'Applies data validation on the relevant inclusion sheets (applied outside! of MAIN script always)
+'____________________________________________________________________________________________
+
+Dim arrMap2 As Variant
+Dim wsMap2 As Worksheet
+Dim fieldProp As Variant
+Dim dType As String
+Dim listCol As Long
+Dim listRowStart As Long
+Dim listRowEnd As Long
+Dim listAddress As String
+Dim ws As Worksheet
+Dim lc As Long
+Dim fr As Long
+Dim lr As Long
+Dim a As Long
+Dim b As Long
+
+
+fr = 4
+listRowStart = 5 'start of list items in MAP sheet for dictionary values
+
+Call setPW
+Call lockSheets(False)
+
+Set wsMap2 = ActiveWorkbook.Worksheets("MAP")
+arrMap2 = readMAP(wsMap2)
+
+    For Each ws In ActiveWorkbook.Worksheets
+        If getSheetID(ws.Name) <> 0 Then
+            'PREPARE SHEET
+                If ws.AutoFilterMode = True Then ws.AutoFilterMode = False
+                ws.Cells.Validation.Delete
+                lc = ws.Range("A1").End(xlToRight).Column
+                If toAll = False Then lr = 50000 Else lr = ws.Range("a" & ws.Rows.Count).End(xlUp).Row
+            'LOOP THROUGH FIELDS
+                For a = 1 To lc
+                    fieldProp = getFieldProperties(arrMap2, ws.Cells(3, a))
+                    dType = fieldProp(2)
+                    If dType <> "Text" Then
+                        With ws.Range(ws.Cells(fr, a).Address, ws.Cells(lr, a).Address)
+                            Select Case dType
+                                Case "Number"
+                                    .Validation.Add Type:=xlValidateDecimal, AlertStyle:=xlValidAlertStop, _
+                                                          operator:=xlBetween, Formula1:="-999999999999", Formula2:="999999999999"
+                                Case "Date"
+                                    .Validation.Add Type:=xlValidateDate, AlertStyle:=xlValidAlertStop, _
+                                                          operator:=xlBetween, Formula1:=DateSerial(1900, 1, 1), _
+                                                          Formula2:=DateSerial(2100, 12, 31)
+                                Case "Boolean"
+                                    .Validation.Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Formula1:="Y,N"
+                                Case "List"
+                                    'The list validation has a string limit of 255 chars, so we need to give it the range
+                                    'We gather the Mapping column & last row, specify the address that we will pass to DV formula
+                                        listCol = fieldProp(4) + 1 'in mapping sheet + 1 column as in the array (we have col header)
+                                        listRowEnd = UBound(fieldProp(3)) + 4 'we have 4 datapoint rows before list items in mapping
+                                        listAddress = wsMap2.Name & "!" & wsMap2.Cells(listRowStart, listCol).Address _
+                                                      & ":" & wsMap2.Cells(listRowEnd, listCol).Address
+                                    .Validation.Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Formula1:="=" & listAddress
+                            End Select
+                            .Validation.IgnoreBlank = True
+                            .Validation.InCellDropdown = True
+                            .Validation.ShowInput = True
+                            .Validation.ShowError = True
+                        End With
+                    End If
+                Next a
+        End If
+    Next ws
+    
+    Call lockSheets
+
+End Sub
+
+Public Sub cleanSector(arr As Variant, arrSector As Variant)
+
+'Cleans sectors in the correct format with dots in order for BR's to catch them correctly.
+'____________________________________________________________________________________________
+
+Dim i As Long, j As Long
+Dim lr As Long
+Dim colSector As Integer
+
+colSector = getArrCol(arr, "sector", 3)
+
+If colSector <> 0 Then
+    lr = UBound(arr, 1)
+    
+    For i = 4 To UBound(arr)
+        For j = LBound(arrSector) To UBound(arrSector)
+            If arr(i, colSector) = arrSector(j) Then
+                Exit For
+            Else
+                If Replace(CStr(Trim(UCase(arr(i, colSector)))), ".", "") = Replace(CStr(arrSector(j)), ".", "") Then
+                    arr(i, colSector) = arrSector(j)
+                    Exit For
+                End If
+            End If
+        Next j
+    Next i
+End If
+
+End Sub
+
+Public Sub makeIdAsText()
+
+'Makes FR & FRT ID's as text values without having scientific notations ("E+11")
+'____________________________________________________________________________________________
+
+Dim ws As Worksheet
+Dim i As Long
+Dim lr As Long
+
+Call setPW
+Call lockSheets(False)
+
+    For Each ws In ActiveWorkbook.Worksheets
+        If getSheetID(ws.Name) <> 0 Then
+            If ws.AutoFilterMode = True Then ws.AutoFilterMode = False
+            lr = ws.Range("A2").End(xlDown).Row
+            If lr >= 4 Then
+                For i = 4 To lr
+                    If IsNumeric(ws.Cells(i, 1)) Then ws.Range(ws.Cells(i, 1).Address).NumberFormat = "0"
+                    ws.Range(ws.Cells(i, 1).Address).Value = "'" & ws.Cells(i, 1)
+                    If getSheetID(ws.Name) <> 1 Then
+                        If IsNumeric(ws.Cells(i, 2)) Then ws.Range(ws.Cells(i, 2).Address).NumberFormat = "0"
+                        ws.Range(ws.Cells(i, 2).Address).Value = "'" & ws.Cells(i, 2)
+                    End If
+                Next i
+            End If
+        End If
+    Next ws
+
+End Sub
+
+Public Sub cleanSheets()
+
+'Initializes sheets -> cleans error columns if present & removes error row colors
+'____________________________________________________________________________________________
+
+Dim ws As Worksheet
+Dim lr As Long
+Dim lc As Long
+
+For Each ws In ActiveWorkbook.Worksheets
+    If getSheetID(ws.Name) <> 0 Then 'if relevant inclusion sheet
+        'Set last row & col
+            lr = ws.Range("A1000000").End(xlUp).Row
+            lc = ws.Range("A3").End(xlToRight).Column
+        'Remove colors
+            If lr >= 4 Then
+                ws.Range(ws.Cells(4, 1).Address, ws.Cells(lr, lc).Address).Interior.Color = xlNone
+            End If
+        'Remove error col IF there
+            If ws.Cells(3, lc) = "error_description" Then
+                ws.Range(ws.Cells(1, lc).Address).EntireColumn.Delete
+            End If
+        ws.Rows.AutoFit
+    Else
+        'Delete debug sheet if there
+            If ws.Name = "DEBUG" Then
+                Application.DisplayAlerts = False
+                ws.Delete
+                Application.DisplayAlerts = True
+            End If
+    End If
+Next ws
+
+End Sub
+
+Public Sub checkDuplicates(arrData As Variant, col1 As Long, Optional col2 As Long = 0)
+
+'Checks duplicates within array given 1 or a concatenated two-col field (col1 & col2)
+'____________________________________________________________________________________________
+
+Dim i As Long, j As Long
+Dim errMsg As String
+
+
+'Error msg -> for A1, FR duplicate, for all else, FRT duplicate
+If col2 = 2 Then
+    errMsg = "Duplicate Final Recipient Transaction(s) found in row(s) "
+Else
+    errMsg = "Duplicate Final Recipient(s) found in row(s) "
+End If
+
+
+'Check duplicates
+    For i = 4 To UBound(arrData, 1)
+        strTestWsRow = CStr(i)
+        For j = 4 To UBound(arrData, 1)
+            If j <> i Then
+                If col2 = 0 Then
+                    If CStr(arrData(i, col1)) = CStr(arrData(j, col1)) Then
+                        If IsEmpty(arrData(i, UBound(arrData, 2))) Then
+                            arrData(i, UBound(arrData, 2)) = "[1] " & errMsg & j
+                        Else
+                            'If another duplicate has been already recorded, just amend with the row number
+                            'As these checks come one after another, no other error message will be inserted between them
+                            If InStr(arrData(i, UBound(arrData, 2)), errMsg) Then
+                                arrData(i, UBound(arrData, 2)) = arrData(i, UBound(arrData, 2)) & " & " & j
+                            Else
+                                arrData(i, UBound(arrData, 2)) = arrData(i, UBound(arrData, 2)) & vbNewLine & _
+                                getErrNr(CStr(arrData(i, UBound(arrData, 2)))) & errMsg & j
+                            End If
+                        End If
+                    End If
+                Else
+                    If CStr(arrData(i, col1) & arrData(i, col2)) = CStr(arrData(j, col1) & arrData(j, col2)) Then
+                        If IsEmpty(arrData(i, UBound(arrData, 2))) Then
+                            arrData(i, UBound(arrData, 2)) = "[1] " & errMsg & j
+                        Else
+                            If InStr(arrData(i, UBound(arrData, 2)), errMsg) Then
+                                arrData(i, UBound(arrData, 2)) = arrData(i, UBound(arrData, 2)) & " & " & j
+                            Else
+                                arrData(i, UBound(arrData, 2)) = arrData(i, UBound(arrData, 2)) & vbNewLine & _
+                                getErrNr(CStr(arrData(i, UBound(arrData, 2)))) & errMsg & j
+                            End If
+                        End If
+                    End If
+                End If
+            End If
+        Next j
+    Next i
+
+End Sub
+
+Public Sub crossCheck(arr1 As Variant, arr2 As Variant, errMsg As String, _
+                      Optional srcColType As Boolean = True, Optional req As Boolean = True)
+
+'Checks if value from arr1 exists in arr2 (srcColType = True is FR & FRT, while false i FR ID only)
+'req specifies if arr2 HAS to contain arr1 value (default = True), or if has to be excluded
+'____________________________________________________________________________________________
+
+Dim i As Long
+Dim j As Long
+Dim cntr As Long
+
+If UBound(arr1, 1) >= 4 Then
+    For i = 4 To UBound(arr1, 1)
+        strTestWsRow = CStr(i)
+        cntr = 0
+        If UBound(arr2, 1) >= 4 Then 'if no trn will be in arr2, it will just go to error (as it's for sure missing)
+        
+        'CHECK IF IN ANOTHER ARRARY
+            For j = 4 To UBound(arr2, 1)
+                If srcColType = True Then
+                    If CStr(arr1(i, 1) & arr1(i, 2)) = CStr(arr2(j, 1) & arr2(j, 2)) Then
+                        cntr = cntr + 1
+                        Exit For
+                    End If
+                Else
+                    If CStr(arr1(i, 1)) = CStr(arr2(j, 1)) Then
+                        cntr = cntr + 1
+                        Exit For
+                    End If
+                End If
+            Next j
+            
+        End If
+        
+        'ERROR MSG OUTPUT (based on req -> if we need it in another sheet or exclude it)
+            If req = True Then
+                If cntr = 0 Then
+                    If IsEmpty(arr1(i, UBound(arr1, 2))) Then
+                        arr1(i, UBound(arr1, 2)) = "[1] " & errMsg
+                    Else
+                        arr1(i, UBound(arr1, 2)) = arr1(i, UBound(arr1, 2)) & vbNewLine & _
+                                                   getErrNr(CStr(arr1(i, UBound(arr1, 2)))) & errMsg
+                    End If
+                End If
+            Else
+                If cntr > 0 Then
+                    If IsEmpty(arr1(i, UBound(arr1, 2))) Then
+                        arr1(i, UBound(arr1, 2)) = "[1] " & errMsg
+                    Else
+                        arr1(i, UBound(arr1, 2)) = arr1(i, UBound(arr1, 2)) & vbNewLine & _
+                                                   getErrNr(CStr(arr1(i, UBound(arr1, 2)))) & errMsg
+                    End If
+                End If
+            End If
+
+    Next i
+End If
+
+strTestWsRow = ""
+
+End Sub
+
+Public Sub crossCheckCond(arr1 As Variant, arr2 As Variant, field As String, condition As String, _
+                          oper As String, errMsg As String, Optional checkedArr As Boolean = True)
+
+'Just as above, but includes a check condition (i.e. thematic product or eligibility)
+'checkedArr = TRUE -> checked in arr2; FALSE -> checked in arr1
+'!!!!!!
+'The main diff. between two types:
+    '- if we check in arr1, first we have to check the condition, and only then we need the FRT in arr2 sheet
+    '- if we check in arr2, first we have to check existence in the sheet anyways, and only then can we check condition on that sheet
+'____________________________________________________________________________________________
+
+Dim i As Long
+Dim j As Long
+Dim fieldCol As Long
+Dim cntr As Long
+Dim evalCondition As Boolean
+Dim dType As Variant
+
+cntr = 0
+
+dType = getFieldProperties(arrMap, field)(2)
+
+If UBound(arr1, 1) >= 4 Then
+    For i = 4 To UBound(arr1, 1)
+        strTestWs = CStr(i)
+        'IF WE CHECK CONDITION IN ARR1
+        If checkedArr = False Then
+            fieldCol = getArrCol(arr1, field, 3)
+            'IF CONDITION IS MET
+            If evaluateBR(arr1(i, fieldCol), condition, oper, , dType) = True Then
+                'IF NO TRN IN OTHER SHEET -> ERROR (MUST ADD VALUES)
+                If UBound(arr2, 1) < 4 Then
+                    GoTo OutputWriting
+                Else
+                    'ELSE CHECK IF WE HAVE THIS SPECIFIC TRN
+                    For j = 4 To UBound(arr2, 1)
+                        If CStr(arr1(i, 1) & arr1(i, 2)) = CStr(arr2(j, 1) & arr2(j, 2)) Then
+                            cntr = cntr + 1
+                            Exit For
+                        End If
+                    Next j
+                End If
+            Else
+                cntr = cntr + 1
+            End If
+        Else
+        'IF WE CHECK CONDITION IN ARR2
+            'IF NO TRN OTHER SHEET -> ERROR
+            If UBound(arr2, 1) < 4 Then
+                Exit For
+            Else
+                'THEN WE NEED TO FIND TRN
+                fieldCol = getArrCol(arr2, field, 3)
+                For j = 4 To UBound(arr2, 1)
+                    strTestWsRow = CStr(j)
+                    If CStr(arr1(i, 1) & arr1(i, 2)) = CStr(arr2(j, 1) & arr2(j, 2)) Then
+                        'THEN WE EVALUATE VALUE
+                        If evaluateBR(arr2(j, fieldCol), condition, oper, , dType) = True Then
+                            cntr = cntr + 1
+                            Exit For
+                        End If
+                    End If
+                Next j
+            End If
+        End If
+        
+OutputWriting:
+        'ERROR WRITING
+        If cntr = 0 Then
+            If IsEmpty(arr1(i, UBound(arr1, 2))) Then
+                arr1(i, UBound(arr1, 2)) = "[1] " & errMsg
+            Else
+                arr1(i, UBound(arr1, 2)) = arr1(i, UBound(arr1, 2)) & vbNewLine & _
+                                           getErrNr(CStr(arr1(i, UBound(arr1, 2)))) & errMsg
+            End If
+        End If
+        
+        
+    Next i
+End If
+
+strTestWsRow = ""
+
+End Sub
+
+Public Sub writeErr()
+
+'Writes out errors to all sheets & applies formatting
+'____________________________________________________________________________________________
+
+Dim i As Long, j As Long
+Dim lastCol As Long
+Dim sheetLastCol As Long
+Dim ws As Worksheet
+Dim hasErrors As Boolean
+Dim view As WorksheetView
+
+'For each sheet
+    For i = 1 To 9
+        If Not IsEmpty(arrSheets(i)) Then
+            If UBound(arrSheets(i), 1) >= 4 Then
+                Set ws = ActiveWorkbook.Worksheets(getSheetName(i))
+                lastCol = UBound(arrSheets(i), 2)
+                If i = 4 Then sheetLastCol = lastCol - 1 Else sheetLastCol = lastCol 'for B sheet due to new_trn calc. field
+                'Check if there are errors
+                    hasErrors = False
+                    For j = 4 To UBound(arrSheets(i), 1)
+                        If Not IsEmpty(arrSheets(i)(j, lastCol)) Then
+                            hasErrors = True
+                            gloHasErrors = True
+                        End If
+                    Next j
+                'If there are errors, create output
+                    If hasErrors = True Then
+                        'New column
+                            ws.Range(ws.Cells(1, sheetLastCol).Address).EntireColumn.Insert CopyOrigin:=xlFormatFromRightOrBelow
+                        'Main styling
+                            'Column styling
+                                With ws.Range(ws.Cells(1, sheetLastCol).Address, ws.Cells(UBound(arrSheets(i), 1), sheetLastCol).Address)
+                                    'Col width
+                                        .ColumnWidth = 80
+                                    'Alignment
+                                        .HorizontalAlignment = xlLeft
+                                        .VerticalAlignment = xlCenter
+                                        .WrapText = True
+                                    'Font
+                                        .Font.Name = "Arial"
+                                        .Font.Size = 10
+                                    'Border
+                                        .Borders.LineStyle = xlContinuous
+                                        .Borders.Weight = xlThin
+                                        .Borders.Color = RGB(204, 204, 204) 'the template gray
+                                End With
+                            'Header
+                                With ws.Range(ws.Cells(1, sheetLastCol).Address, ws.Cells(3, sheetLastCol).Address)
+                                    .Interior.Color = RGB(64, 73, 164)
+                                    .Font.Color = vbWhite
+                                    .Font.Bold = True
+                                    .HorizontalAlignment = xlCenter
+                                End With
+                        'Data output
+                            ws.Range(ws.Cells(1, sheetLastCol).Address) = "ERRORS"
+                            ws.Range(ws.Cells(2, sheetLastCol).Address) = "Error Description"
+                            ws.Range(ws.Cells(3, sheetLastCol).Address) = "error_description"
+                            For j = 4 To UBound(arrSheets(i), 1)
+                                If Not IsEmpty(arrSheets(i)(j, lastCol)) Then
+                                    ws.Range(ws.Cells(j, sheetLastCol).Address) = arrSheets(i)(j, lastCol)
+                                    'Format errors
+                                    ws.Range(ws.Cells(j, 1).Address, ws.Cells(j, sheetLastCol).Address).Interior.Color = RGB(246, 213, 213)
+                                End If
+                            Next j
+                            ws.Rows.AutoFit
+                    End If
+                'Untrimmed values output if any
+                    If Not IsEmpty(arrModif) Then
+                        For j = LBound(arrModif, 1) To UBound(arrModif, 1)
+                            If arrModif(j, 1) = i Then
+                                ws.Cells(arrModif(j, 2), arrModif(j, 3)) = arrSheets(i)(arrModif(j, 2), arrModif(j, 3))
+                            End If
+                        Next j
+                    End If
+                'Disable gridlines (as they are applied randomly in some cases(?))
+                    For Each view In ws.Parent.Windows(1).SheetViews
+                        If view.sheet.Name = ws.Name Then
+                            view.DisplayGridlines = False
+                            Exit For
+                        End If
+                    Next view
+            End If
+        End If
+    Next i
+
+End Sub
