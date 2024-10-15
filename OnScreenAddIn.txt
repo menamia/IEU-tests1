@@ -1,0 +1,37 @@
+Public Sub gTypeChange()
+
+'Guarantee Type Change trigger event
+'____________________________________________________________________________________________
+
+Dim actWs As Worksheet
+Dim gTypeCB As Object
+Dim gType_DB As String
+Dim gType_New As String
+Dim asnw As String
+Dim ind As Integer
+
+Call setPW
+Call lockSheets(False, "VALIDATION")
+
+Set actWs = ActiveWorkbook.Worksheets("VALIDATION")
+Set gTypeCB = actWs.DropDowns("GType_DD")
+
+gType_DB = actWs.Range("XX101").Value
+gType_New = gTypeCB.List(gTypeCB.ListIndex)
+actWs.Range("XX100").Value = gType_New
+If gType_New = "DIRECT GUARANTEE" Then ind = 1 Else ind = 2
+
+If gType_DB <> gType_New Then
+    answ = MsgBox("Please note that the selected guarantee type is not consistent with the guarantee type expected by EIF. " & _
+                  "Could you kindly review whether the right guarantee type has been selected, as underlined in the signed Agreement with EIF?", _
+                  vbYesNo, "Guarantee Type Discrepancy")
+    
+    If answ = vbNo Then
+        If ind = 1 Then gTypeCB.ListIndex = 2 Else gTypeCB.ListIndex = 1
+        actWs.Range("XX100") = gType_DB
+    End If
+End If
+
+Call lockSheets(True, "VALIDATION")
+
+End Sub
